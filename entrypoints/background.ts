@@ -1,54 +1,42 @@
-let creatingOffscreen: Promise<void> | null = null;
+let creating: Promise<void> | null = null;
 
 async function setupOffscreen() {
-  // @ts-expect-error: MV3 only API
+  // @ts-expect-error: MV3 API
   const contexts = await browser.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
   if (contexts.length > 0) return;
+  if (creating) return creating;
 
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return;
-  }
-
-  // @ts-expect-error: MV3 only API
-  creatingOffscreen = browser.offscreen.createDocument({
+  // @ts-expect-error: MV3 API
+  creating = browser.offscreen.createDocument({
     url: "/offscreen.html",
     reasons: ["WORKERS"],
-    justification: "Run Transformers.js model inference",
+    justification: "Run Transformers.js inference",
   });
-  await creatingOffscreen;
-  creatingOffscreen = null;
+  await creating;
+  creating = null;
   await new Promise((r) => setTimeout(r, 100));
 }
 
-async function sendToOffscreen(message: any) {
+async function sendToOffscreen(msg: any) {
   await setupOffscreen();
   for (let i = 0; i < 3; i++) {
     try {
-      return await browser.runtime.sendMessage(message);
-    } catch (err) {
-      if (i === 2) throw err;
+      return await browser.runtime.sendMessage(msg);
+    } catch (e) {
+      if (i === 2) throw e;
       await new Promise((r) => setTimeout(r, 200));
     }
   }
 }
 
 export default defineBackground(() => {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "PROCESS_TEXT") {
-      sendToOffscreen({ target: "offscreen", type: "GENERATE", text: message.text })
-        .then(sendResponse)
-        .catch((err) => sendResponse({ success: false, error: String(err) }));
-      return true;
-    }
-
-    if (message.type === "GET_STATUS") {
-      sendToOffscreen({ target: "offscreen", type: "GET_STATUS" })
-        .then(sendResponse)
-        .catch(() => sendResponse({ ready: false }));
+  browser.runtime.onMessage.addListener((msg, _, respond) => {
+    if (msg.type === "PROCESS_TEXT") {
+      sendToOffscreen({ target: "offscreen", type: "GENERATE", text: msg.text })
+        .then(respond)
+        .catch((e) => respond({ success: false, error: String(e) }));
       return true;
     }
   });
-
   setupOffscreen();
 });
