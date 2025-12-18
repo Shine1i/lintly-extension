@@ -1,35 +1,80 @@
-import { pipeline, env } from "@huggingface/transformers";
+import type { Action, AnalyzeResult, OffscreenMessage, Tone } from "@/lib/types";
+import {
+  ANALYZE_SYSTEM,
+  SUMMARIZE_SYSTEM,
+  PARAPHRASE_SYSTEM,
+  CUSTOM_SYSTEM,
+  TONE_PROMPTS,
+} from "@/lib/prompts";
 
-env.allowLocalModels = false;
-env.backends.onnx.wasm.wasmPaths = browser.runtime.getURL("wasm/");
-env.backends.onnx.wasm.numThreads = navigator.hardwareConcurrency || 4;
+const API_URL = "http://192.168.0.147:8000/v1/chat/completions";
+const MODEL = "moogin/lintly-lfm2-700m-dpo-final";
 
-let generator: any = null;
-let loading: Promise<void> | null = null;
+async function callAPI(systemPrompt: string, userText: string): Promise<string> {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userText },
+      ],
+    }),
+  });
 
-async function getGenerator() {
-  if (generator) return generator;
-  if (loading) { await loading; return generator; }
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
 
-  loading = (async () => {
-    generator = await pipeline("text-generation", "onnx-community/LFM2-700M-ONNX", {
-      dtype: "q4",
-      device: navigator.gpu ? "webgpu" : "wasm",
-    });
-  })();
-  await loading;
-  return generator;
+  const data = await res.json();
+  return data.choices[0].message.content;
 }
 
-browser.runtime.onMessage.addListener((msg, _, respond) => {
+function getSystemPrompt(action: Action, options?: { tone?: Tone; customInstruction?: string }): string {
+  switch (action) {
+    case "ANALYZE":
+      return ANALYZE_SYSTEM;
+    case "SUMMARIZE":
+      return SUMMARIZE_SYSTEM;
+    case "PARAPHRASE":
+      return PARAPHRASE_SYSTEM;
+    case "TONE_REWRITE":
+      return options?.tone ? TONE_PROMPTS[options.tone] : TONE_PROMPTS.formal;
+    case "CUSTOM":
+      return options?.customInstruction
+        ? `${CUSTOM_SYSTEM}\n\nInstructions: ${options.customInstruction}`
+        : CUSTOM_SYSTEM;
+    default:
+      return ANALYZE_SYSTEM;
+  }
+}
+
+async function processText(
+  action: Action,
+  text: string,
+  options?: { tone?: Tone; customInstruction?: string }
+): Promise<string | AnalyzeResult> {
+  const systemPrompt = getSystemPrompt(action, options);
+  const response = await callAPI(systemPrompt, text);
+
+  if (action === "ANALYZE") {
+    try {
+      return JSON.parse(response) as AnalyzeResult;
+    } catch {
+      return { corrected_text: response, issues: [] };
+    }
+  }
+
+  return response;
+}
+
+browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
   if (msg.target !== "offscreen" || msg.type !== "GENERATE") return;
 
-  getGenerator()
-    .then((gen) => gen([
-      { role: "system", content: "You are a helpful assistant." },
-      { role: "user", content: msg.text },
-    ], { max_new_tokens: 128, do_sample: false }))
-    .then((out: any) => respond({ success: true, result: out[0].generated_text.at(-1).content }))
-    .catch((e: any) => respond({ success: false, error: String(e) }));
+  processText(msg.action, msg.text, msg.options)
+    .then((result) => respond({ success: true, result }))
+    .catch((e: Error) => respond({ success: false, error: e.message }));
+
   return true;
 });

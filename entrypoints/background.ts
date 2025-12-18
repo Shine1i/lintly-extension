@@ -1,3 +1,5 @@
+import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
+
 let creating: Promise<void> | null = null;
 
 async function setupOffscreen() {
@@ -10,14 +12,14 @@ async function setupOffscreen() {
   creating = browser.offscreen.createDocument({
     url: "/offscreen.html",
     reasons: ["WORKERS"],
-    justification: "Run Transformers.js inference",
+    justification: "Run AI inference via API",
   });
   await creating;
   creating = null;
   await new Promise((r) => setTimeout(r, 100));
 }
 
-async function sendToOffscreen(msg: any) {
+async function sendToOffscreen(msg: OffscreenMessage) {
   await setupOffscreen();
   for (let i = 0; i < 3; i++) {
     try {
@@ -30,9 +32,15 @@ async function sendToOffscreen(msg: any) {
 }
 
 export default defineBackground(() => {
-  browser.runtime.onMessage.addListener((msg, _, respond) => {
+  browser.runtime.onMessage.addListener((msg: ProcessRequest, _, respond) => {
     if (msg.type === "PROCESS_TEXT") {
-      sendToOffscreen({ target: "offscreen", type: "GENERATE", text: msg.text })
+      sendToOffscreen({
+        target: "offscreen",
+        type: "GENERATE",
+        action: msg.action,
+        text: msg.text,
+        options: msg.options,
+      })
         .then(respond)
         .catch((e) => respond({ success: false, error: String(e) }));
       return true;

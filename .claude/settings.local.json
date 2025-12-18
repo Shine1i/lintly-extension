@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)",
-      "Bash(dir /s /b \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\")"
+      "Bash(dir /s /b \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\")",
+      "Bash(npx shadcn@latest add button dropdown-menu popover slider input textarea --yes)",
+      "Bash(del \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\\\\entrypoints\\\\content.ts\")",
+      "Bash(npm run build:*)",
+      "Bash(rm:*)",
+      "Bash(bunx:*)",
+      "WebFetch(domain:www.grammarly.com)"
     ]
   }
 }
