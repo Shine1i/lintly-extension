@@ -11,6 +11,7 @@ interface LintlyModalProps {
   position: { x: number; y: number };
   onClose: () => void;
   sourceText: string;
+  fieldIssueCount?: number;
   onSourceTextChange: (text: string) => void;
   customInstruction: string;
   onCustomInstructionChange: (instruction: string) => void;
@@ -30,6 +31,7 @@ export function LintlyModal({
   position,
   onClose,
   sourceText,
+  fieldIssueCount = 0,
   onSourceTextChange,
   customInstruction,
   onCustomInstructionChange,
@@ -70,9 +72,14 @@ export function LintlyModal({
 
   const showDiff = result !== null;
 
+  const handleModalMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <div
       ref={modalRef}
+      onMouseDown={handleModalMouseDown}
       style={{
         position: "fixed",
         left: position.x,
@@ -101,6 +108,7 @@ export function LintlyModal({
         action={action}
         onActionClick={onActionClick}
         issues={issues}
+        fieldIssueCount={fieldIssueCount}
         isLoading={isLoading}
       />
 

@@ -43,3 +43,29 @@ export interface OffscreenMessage {
     customInstruction?: string;
   };
 }
+
+export interface IssueWithPosition extends Issue {
+  startOffset: number;
+  endOffset: number;
+}
+
+export interface EditableState {
+  elementId: string;
+  text: string;
+  issues: IssueWithPosition[];
+  lastAnalyzed: number;
+  isAnalyzing: boolean;
+}
+
+export interface BackgroundAnalyzeRequest {
+  type: "BACKGROUND_ANALYZE";
+  elementId: string;
+  text: string;
+}
+
+export interface BackgroundAnalyzeResponse {
+  success: boolean;
+  elementId: string;
+  issues?: IssueWithPosition[];
+  error?: string;
+}

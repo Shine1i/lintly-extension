@@ -3,16 +3,18 @@ import type { Issue } from "@/lib/types";
 
 interface HealthIndicatorProps {
   issues: Issue[];
+  fieldIssueCount?: number;
 }
 
-export function HealthIndicator({ issues }: HealthIndicatorProps) {
+export function HealthIndicator({ issues, fieldIssueCount = 0 }: HealthIndicatorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warningCount = issues.filter((i) => i.severity === "warning").length;
   const suggestionCount = issues.filter((i) => i.severity === "suggestion").length;
 
-  const healthScore = Math.max(0, 100 - errorCount * 10 - warningCount * 5 - suggestionCount * 2);
+  const totalIssues = issues.length + fieldIssueCount;
+  const healthScore = Math.max(0, 100 - errorCount * 10 - warningCount * 5 - suggestionCount * 2 - fieldIssueCount * 3);
   const healthColor =
     healthScore >= 80 ? "bg-emerald-400" : healthScore >= 60 ? "bg-amber-400" : "bg-rose-400";
 
@@ -35,14 +37,20 @@ export function HealthIndicator({ issues }: HealthIndicatorProps) {
         <div className={`w-2 h-2 rounded-full ${healthColor} shadow-[0_0_4px_rgba(251,191,36,0.5)]`} />
       </button>
 
-      {isOpen && issues.length > 0 && (
+      {isOpen && totalIssues > 0 && (
         <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl ring-1 ring-black/5 p-1 dropdown-enter z-50">
           <div className="px-3 py-2 border-b border-gray-50 flex justify-between items-center">
             <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
               Issues Found
             </span>
-            <span className="text-[10px] text-gray-400">{issues.length} total</span>
+            <span className="text-[10px] text-gray-400">{totalIssues} total</span>
           </div>
+          {fieldIssueCount > 0 && (
+            <div className="px-3 py-2 border-b border-gray-50 flex items-center justify-between">
+              <span className="text-xs text-slate-500">Document issues</span>
+              <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 rounded">{fieldIssueCount}</span>
+            </div>
+          )}
           <div className="p-1 space-y-0.5">
             {Object.entries(groupedIssues).map(([type, count]) => (
               <div

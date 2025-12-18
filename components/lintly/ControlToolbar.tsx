@@ -8,6 +8,7 @@ interface ControlToolbarProps {
   action: Action;
   onActionClick: () => void;
   issues: Issue[];
+  fieldIssueCount?: number;
   isLoading: boolean;
 }
 
@@ -27,6 +28,7 @@ export function ControlToolbar({
   action,
   onActionClick,
   issues,
+  fieldIssueCount = 0,
   isLoading,
 }: ControlToolbarProps) {
   return (
@@ -65,7 +67,7 @@ export function ControlToolbar({
         </button>
       </div>
 
-      <HealthIndicator issues={issues} />
+      <HealthIndicator issues={issues} fieldIssueCount={fieldIssueCount} />
     </div>
   );
 }

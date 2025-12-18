@@ -8,7 +8,8 @@
       "Bash(npm run build:*)",
       "Bash(rm:*)",
       "Bash(bunx:*)",
-      "WebFetch(domain:www.grammarly.com)"
+      "WebFetch(domain:www.grammarly.com)",
+      "WebSearch"
     ]
   }
 }

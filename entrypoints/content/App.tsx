@@ -1,7 +1,17 @@
-import { useReducer, useEffect, useCallback } from "react";
+import { useReducer, useEffect, useCallback, useState } from "react";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
-import type { Action, AnalyzeResult, ProcessResponse, Tone } from "@/lib/types";
+import { UnderlineOverlay } from "@/components/lintly/UnderlineOverlay";
+import { isEditableElement, getEditableText, generateElementId } from "@/lib/editableDetector";
+import { scheduleAnalysis, setAnalysisCallback, getEditableState } from "@/lib/backgroundAnalyzer";
+import type { Action, AnalyzeResult, ProcessResponse, Tone, EditableState, IssueWithPosition } from "@/lib/types";
+
+interface SelectionRect {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
 
 interface State {
   isVisible: boolean;
@@ -13,7 +23,10 @@ interface State {
   result: string | AnalyzeResult | null;
   toolbarPosition: { x: number; y: number } | null;
   modalPosition: { x: number; y: number };
+  selectionRect: SelectionRect | null;
   error: string | null;
+  activeElementId: string | null;
+  fieldIssues: IssueWithPosition[];
 }
 
 type AppAction =
@@ -26,8 +39,10 @@ type AppAction =
   | { type: "SET_CUSTOM_INSTRUCTION"; instruction: string }
   | { type: "SET_TONE"; tone: Tone }
   | { type: "SET_ACTION"; action: Action }
-  | { type: "SHOW_TOOLBAR"; position: { x: number; y: number } }
-  | { type: "HIDE_TOOLBAR" };
+  | { type: "SHOW_TOOLBAR"; position: { x: number; y: number }; selectionRect: SelectionRect }
+  | { type: "HIDE_TOOLBAR" }
+  | { type: "SET_ACTIVE_ELEMENT"; elementId: string | null }
+  | { type: "SET_FIELD_ISSUES"; issues: IssueWithPosition[] };
 
 const initialState: State = {
   isVisible: false,
@@ -39,7 +54,10 @@ const initialState: State = {
   result: null,
   toolbarPosition: null,
   modalPosition: { x: 100, y: 100 },
+  selectionRect: null,
   error: null,
+  activeElementId: null,
+  fieldIssues: [],
 };
 
 function reducer(state: State, action: AppAction): State {
@@ -56,7 +74,7 @@ function reducer(state: State, action: AppAction): State {
         isLoading: !!action.autoRun,
       };
     case "HIDE_MODAL":
-      return { ...state, isVisible: false, result: null };
+      return { ...state, isVisible: false, result: null, selectionRect: null };
     case "SET_LOADING":
       return { ...state, isLoading: action.loading };
     case "SET_RESULT":
@@ -72,41 +90,65 @@ function reducer(state: State, action: AppAction): State {
     case "SET_ACTION":
       return { ...state, action: action.action };
     case "SHOW_TOOLBAR":
-      return { ...state, toolbarPosition: action.position };
+      return { ...state, toolbarPosition: action.position, selectionRect: action.selectionRect };
     case "HIDE_TOOLBAR":
-      return { ...state, toolbarPosition: null };
+      return { ...state, toolbarPosition: null, selectionRect: null };
+    case "SET_ACTIVE_ELEMENT":
+      return { ...state, activeElementId: action.elementId, fieldIssues: [] };
+    case "SET_FIELD_ISSUES":
+      return { ...state, fieldIssues: action.issues };
     default:
       return state;
   }
 }
 
-function getModalPosition(): { x: number; y: number } {
+function getSelectionRect(): SelectionRect | null {
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return { x: 100, y: 100 };
-  }
+  if (!selection || selection.rangeCount === 0) return null;
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+}
 
-  const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
-
+function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const modalWidth = 500;
   const modalHeight = 400;
 
   let x = rect.left;
-  let y = rect.bottom + 12;
+  let y = rect.bottom + 8;
 
-  if (x + modalWidth > window.innerWidth) {
+  if (x + modalWidth > window.innerWidth - 16) {
     x = window.innerWidth - modalWidth - 16;
   }
-  if (y + modalHeight > window.innerHeight) {
-    y = rect.top - modalHeight - 12;
+  if (y + modalHeight > window.innerHeight - 16) {
+    y = rect.top - modalHeight - 8;
   }
 
   return { x: Math.max(16, x), y: Math.max(16, y) };
 }
 
+function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number } {
+  const toolbarWidth = 220;
+  const toolbarHeight = 36;
+
+  let x = rect.right + 8;
+  let y = rect.top + (rect.bottom - rect.top) / 2 - toolbarHeight / 2;
+
+  if (x + toolbarWidth > window.innerWidth - 16) {
+    x = rect.left - toolbarWidth - 8;
+  }
+  if (y < 16) {
+    y = 16;
+  }
+  if (y + toolbarHeight > window.innerHeight - 16) {
+    y = window.innerHeight - toolbarHeight - 16;
+  }
+
+  return { x: Math.max(16, x), y };
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [activeElement, setActiveElement] = useState<HTMLElement | null>(null);
 
   const processText = useCallback(
     async (actionOverride?: Action) => {
@@ -153,30 +195,36 @@ export default function App() {
     dispatch({ type: "HIDE_MODAL" });
   }, [handleCopy]);
 
+  const openModalWithAction = useCallback(
+    (action: Action) => {
+      const text = window.getSelection()?.toString().trim();
+      const rect = state.selectionRect || getSelectionRect();
+      if (text && rect) {
+        const position = calculateModalPosition(rect);
+        dispatch({ type: "SET_ACTION", action });
+        dispatch({ type: "SHOW_MODAL", text, position, autoRun: action });
+        setTimeout(() => processText(action), 50);
+      }
+    },
+    [state.selectionRect, processText]
+  );
+
   const handleToolbarRewrite = useCallback(() => {
-    const text = window.getSelection()?.toString().trim();
-    if (text) {
-      dispatch({ type: "SET_ACTION", action: "PARAPHRASE" });
-      dispatch({ type: "SHOW_MODAL", text, position: getModalPosition(), autoRun: "PARAPHRASE" });
-      setTimeout(() => processText("PARAPHRASE"), 50);
-    }
-  }, [processText]);
+    openModalWithAction("PARAPHRASE");
+  }, [openModalWithAction]);
 
   const handleToolbarSummarize = useCallback(() => {
-    const text = window.getSelection()?.toString().trim();
-    if (text) {
-      dispatch({ type: "SET_ACTION", action: "SUMMARIZE" });
-      dispatch({ type: "SHOW_MODAL", text, position: getModalPosition(), autoRun: "SUMMARIZE" });
-      setTimeout(() => processText("SUMMARIZE"), 50);
-    }
-  }, [processText]);
+    openModalWithAction("SUMMARIZE");
+  }, [openModalWithAction]);
 
   const handleToolbarMore = useCallback(() => {
     const text = window.getSelection()?.toString().trim();
-    if (text) {
-      dispatch({ type: "SHOW_MODAL", text, position: getModalPosition() });
+    const rect = state.selectionRect || getSelectionRect();
+    if (text && rect) {
+      const position = calculateModalPosition(rect);
+      dispatch({ type: "SHOW_MODAL", text, position });
     }
-  }, []);
+  }, [state.selectionRect]);
 
   const handleActionChange = useCallback((action: Action, tone?: Tone) => {
     dispatch({ type: "SET_ACTION", action });
@@ -186,13 +234,66 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setAnalysisCallback((editableState: EditableState) => {
+      if (editableState.elementId === state.activeElementId) {
+        dispatch({ type: "SET_FIELD_ISSUES", issues: editableState.issues });
+      }
+    });
+  }, [state.activeElementId]);
+
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as Element;
+      if (isEditableElement(target)) {
+        const elementId = generateElementId(target);
+        setActiveElement(target);
+        dispatch({ type: "SET_ACTIVE_ELEMENT", elementId });
+
+        const existingState = getEditableState(elementId);
+        if (existingState) {
+          dispatch({ type: "SET_FIELD_ISSUES", issues: existingState.issues });
+        }
+      }
+    };
+
+    const handleInput = (e: Event) => {
+      const target = e.target as Element;
+      if (isEditableElement(target)) {
+        const elementId = generateElementId(target);
+        const text = getEditableText(target);
+        scheduleAnalysis(elementId, text);
+      }
+    };
+
+    const handleFocusOut = (e: FocusEvent) => {
+      const relatedTarget = e.relatedTarget as Element | null;
+      if (!relatedTarget || !isEditableElement(relatedTarget)) {
+        setActiveElement(null);
+        dispatch({ type: "SET_ACTIVE_ELEMENT", elementId: null });
+      }
+    };
+
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("input", handleInput);
+    document.addEventListener("focusout", handleFocusOut);
+
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("input", handleInput);
+      document.removeEventListener("focusout", handleFocusOut);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
         e.preventDefault();
         const text = window.getSelection()?.toString().trim();
-        if (text) {
+        const rect = getSelectionRect();
+        if (text && rect) {
           dispatch({ type: "HIDE_TOOLBAR" });
-          dispatch({ type: "SHOW_MODAL", text, position: getModalPosition() });
+          const position = calculateModalPosition(rect);
+          dispatch({ type: "SHOW_MODAL", text, position });
         }
       }
       if (e.key === "Escape") {
@@ -204,17 +305,18 @@ export default function App() {
       }
     };
 
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = () => {
       if (state.isVisible) return;
 
       setTimeout(() => {
         const selection = window.getSelection();
         const text = selection?.toString().trim();
         if (text && text.length > 0) {
-          dispatch({
-            type: "SHOW_TOOLBAR",
-            position: { x: e.clientX - 80, y: e.clientY - 50 },
-          });
+          const rect = getSelectionRect();
+          if (rect) {
+            const position = calculateToolbarPosition(rect);
+            dispatch({ type: "SHOW_TOOLBAR", position, selectionRect: rect });
+          }
         } else {
           dispatch({ type: "HIDE_TOOLBAR" });
         }
@@ -242,6 +344,11 @@ export default function App() {
 
   return (
     <>
+      <UnderlineOverlay
+        element={activeElement}
+        issues={state.fieldIssues}
+      />
+
       {state.toolbarPosition && (
         <SelectionToolbar
           position={state.toolbarPosition}
@@ -256,6 +363,7 @@ export default function App() {
         position={state.modalPosition}
         onClose={() => dispatch({ type: "HIDE_MODAL" })}
         sourceText={state.sourceText}
+        fieldIssueCount={state.fieldIssues.length}
         onSourceTextChange={(text) => dispatch({ type: "SET_SOURCE_TEXT", text })}
         customInstruction={state.customInstruction}
         onCustomInstructionChange={(instruction) =>
