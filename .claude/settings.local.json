@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\")"
+    ]
+  }
+}

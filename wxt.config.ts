@@ -1,6 +1,6 @@
 import { defineConfig } from "wxt";
 import { viteStaticCopy } from "vite-plugin-static-copy";
-
+import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   manifest: {
     permissions: ["offscreen", "activeTab"],
@@ -15,6 +15,7 @@ export default defineConfig({
       },
     ],
   },
+  modules: ["@wxt-dev/module-react"],
   vite: () => ({
     plugins: [
       viteStaticCopy({
@@ -29,6 +30,7 @@ export default defineConfig({
           },
         ],
       }),
+      tailwindcss()
     ],
     optimizeDeps: {
       exclude: ["onnxruntime-web", "@huggingface/transformers"],
