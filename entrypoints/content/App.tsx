@@ -1,7 +1,7 @@
 import { useReducer, useEffect, useCallback } from "react";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
-import type { Action, AnalyzeResult, ProcessResponse, Tone } from "@/lib/types";
+import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
 
 interface SelectionRect {
   top: number;
@@ -14,7 +14,6 @@ interface State {
   isVisible: boolean;
   isLoading: boolean;
   sourceText: string;
-  customInstruction: string;
   tone: Tone;
   action: Action;
   result: string | AnalyzeResult | null;
@@ -25,24 +24,23 @@ interface State {
 }
 
 type AppAction =
-  | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: Action }
+  | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: boolean }
   | { type: "HIDE_MODAL" }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_RESULT"; result: string | AnalyzeResult }
   | { type: "SET_ERROR"; error: string }
   | { type: "SET_SOURCE_TEXT"; text: string }
-  | { type: "SET_CUSTOM_INSTRUCTION"; instruction: string }
   | { type: "SET_TONE"; tone: Tone }
   | { type: "SET_ACTION"; action: Action }
   | { type: "SHOW_TOOLBAR"; position: { x: number; y: number }; selectionRect: SelectionRect }
-  | { type: "HIDE_TOOLBAR" };
+  | { type: "HIDE_TOOLBAR" }
+  | { type: "RESET" };
 
 const initialState: State = {
   isVisible: false,
   isLoading: false,
   sourceText: "",
-  customInstruction: "",
-  tone: "formal",
+  tone: "professional",
   action: "ANALYZE",
   result: null,
   toolbarPosition: null,
@@ -61,7 +59,7 @@ function reducer(state: State, action: AppAction): State {
         result: null,
         toolbarPosition: null,
         modalPosition: action.position,
-        action: action.autoRun || state.action,
+        action: "ANALYZE",
         isLoading: !!action.autoRun,
       };
     case "HIDE_MODAL":
@@ -74,8 +72,6 @@ function reducer(state: State, action: AppAction): State {
       return { ...state, error: action.error, isLoading: false };
     case "SET_SOURCE_TEXT":
       return { ...state, sourceText: action.text };
-    case "SET_CUSTOM_INSTRUCTION":
-      return { ...state, customInstruction: action.instruction };
     case "SET_TONE":
       return { ...state, tone: action.tone };
     case "SET_ACTION":
@@ -84,61 +80,178 @@ function reducer(state: State, action: AppAction): State {
       return { ...state, toolbarPosition: action.position, selectionRect: action.selectionRect };
     case "HIDE_TOOLBAR":
       return { ...state, toolbarPosition: null, selectionRect: null };
+    case "RESET":
+      return { ...state, result: null, isLoading: false, error: null };
     default:
       return state;
   }
 }
 
-function getSelectionRect(): SelectionRect | null {
+function getTextareaSelectionRect(element: HTMLTextAreaElement | HTMLInputElement): SelectionRect | null {
+  const start = element.selectionStart ?? 0;
+  const end = element.selectionEnd ?? 0;
+  if (start === end) return null;
+
+  // Create a mirror div to measure text position
+  const mirror = document.createElement("div");
+  const style = window.getComputedStyle(element);
+
+  // Copy textarea styles to mirror
+  mirror.style.cssText = `
+    position: absolute;
+    visibility: hidden;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font: ${style.font};
+    padding: ${style.padding};
+    border: ${style.border};
+    box-sizing: ${style.boxSizing};
+    width: ${style.width};
+    line-height: ${style.lineHeight};
+    letter-spacing: ${style.letterSpacing};
+  `;
+
+  // Get element position
+  const elementRect = element.getBoundingClientRect();
+  mirror.style.top = `${elementRect.top + window.scrollY}px`;
+  mirror.style.left = `${elementRect.left + window.scrollX}px`;
+
+  const value = element.value;
+  const before = value.slice(0, start);
+  const selected = value.slice(start, end);
+
+  // Build mirror content with marker span
+  mirror.innerHTML =
+    before.replace(/\n/g, "<br>").replace(/ /g, "&nbsp;") +
+    '<span id="lintly-sel-marker">' +
+    selected.replace(/\n/g, "<br>").replace(/ /g, "&nbsp;") +
+    "</span>";
+
+  document.body.appendChild(mirror);
+
+  const marker = mirror.querySelector("#lintly-sel-marker");
+  if (!marker) {
+    document.body.removeChild(mirror);
+    return null;
+  }
+
+  const markerRect = marker.getBoundingClientRect();
+
+  // Adjust for scroll position within textarea
+  const scrollTop = element.scrollTop;
+  const scrollLeft = element.scrollLeft;
+
+  const rect: SelectionRect = {
+    top: elementRect.top + (markerRect.top - mirror.getBoundingClientRect().top) - scrollTop,
+    bottom: elementRect.top + (markerRect.bottom - mirror.getBoundingClientRect().top) - scrollTop,
+    left: elementRect.left + (markerRect.left - mirror.getBoundingClientRect().left) - scrollLeft,
+    right: elementRect.left + (markerRect.right - mirror.getBoundingClientRect().left) - scrollLeft,
+  };
+
+  document.body.removeChild(mirror);
+  return rect;
+}
+
+function getSelectionRect(activeElement?: Element | null): SelectionRect | null {
+  // Check if selection is in textarea/input
+  if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
+    const rect = getTextareaSelectionRect(activeElement);
+    if (rect) {
+      console.log("[Lintly] Using textarea selection rect:", rect);
+      return rect;
+    }
+  }
+
+  // Regular DOM selection
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  const rect = selection.getRangeAt(0).getBoundingClientRect();
-  return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  const rects = range.getClientRects();
+
+  if (rects.length > 0) {
+    const r = rects[0];
+    console.log("[Lintly] Using DOM selection rect");
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  }
+
+  const r = range.getBoundingClientRect();
+  if (r.width > 0) {
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  }
+
+  return null;
 }
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
-  const modalWidth = 500;
-  const modalHeight = 400;
+  const modalWidth = 560;
+  const modalHeight = 380;
+  const margin = 16;
+  const gap = 8;
 
+  // Position below selection, aligned to left of selection
   let x = rect.left;
-  let y = rect.bottom + 8;
+  let y = rect.bottom + gap;
 
-  if (x + modalWidth > window.innerWidth - 16) {
-    x = window.innerWidth - modalWidth - 16;
-  }
-  if (y + modalHeight > window.innerHeight - 16) {
-    y = rect.top - modalHeight - 8;
+  // If not enough space below, position above
+  if (y + modalHeight > window.innerHeight - margin) {
+    y = rect.top - modalHeight - gap;
   }
 
-  return { x: Math.max(16, x), y: Math.max(16, y) };
+  // Adjust horizontal position
+  if (x + modalWidth > window.innerWidth - margin) {
+    x = window.innerWidth - modalWidth - margin;
+  }
+  if (x < margin) {
+    x = margin;
+  }
+
+  // Keep within vertical bounds
+  if (y < margin) {
+    y = margin;
+  }
+
+  return { x, y };
 }
 
 function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number } {
-  const toolbarWidth = 220;
-  const toolbarHeight = 36;
+  const toolbarWidth = 60;
+  const toolbarHeight = 28;
+  const gap = 8;
 
-  let x = rect.right + 8;
-  let y = rect.top + (rect.bottom - rect.top) / 2 - toolbarHeight / 2;
+  // Position above the selection, centered horizontally
+  let x = rect.left + (rect.right - rect.left) / 2 - toolbarWidth / 2;
+  let y = rect.top - toolbarHeight - gap;
 
-  if (x + toolbarWidth > window.innerWidth - 16) {
-    x = rect.left - toolbarWidth - 8;
-  }
+  // If not enough space above, position below
   if (y < 16) {
-    y = 16;
+    y = rect.bottom + gap;
   }
+
+  // Keep within horizontal bounds
+  if (x + toolbarWidth > window.innerWidth - 16) {
+    x = window.innerWidth - toolbarWidth - 16;
+  }
+  if (x < 16) {
+    x = 16;
+  }
+
+  // Keep within vertical bounds
   if (y + toolbarHeight > window.innerHeight - 16) {
     y = window.innerHeight - toolbarHeight - 16;
   }
 
-  return { x: Math.max(16, x), y };
+  return { x, y };
 }
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const processText = useCallback(
-    async (actionOverride?: Action) => {
-      const actionToUse = actionOverride || (state.customInstruction ? "CUSTOM" : state.action);
+    async (actionOverride?: Action, customInstruction?: string) => {
+      const actionToUse = actionOverride || state.action;
       if (!state.sourceText.trim()) return;
 
       dispatch({ type: "SET_LOADING", loading: true });
@@ -146,11 +259,11 @@ export default function App() {
       try {
         const response: ProcessResponse = await browser.runtime.sendMessage({
           type: "PROCESS_TEXT",
-          action: actionToUse,
+          action: customInstruction ? "CUSTOM" : actionToUse,
           text: state.sourceText,
           options: {
             tone: state.tone,
-            customInstruction: state.customInstruction || undefined,
+            customInstruction: customInstruction || undefined,
           },
         });
 
@@ -163,7 +276,7 @@ export default function App() {
         dispatch({ type: "SET_ERROR", error: String(err) });
       }
     },
-    [state.sourceText, state.action, state.tone, state.customInstruction]
+    [state.sourceText, state.action, state.tone]
   );
 
   const handleCopy = useCallback(() => {
@@ -172,63 +285,97 @@ export default function App() {
         ? state.result.corrected_text
         : typeof state.result === "string"
           ? state.result
-          : "";
+          : state.sourceText;
     navigator.clipboard.writeText(text);
-  }, [state.result]);
+  }, [state.result, state.sourceText]);
 
-  const handleReplace = useCallback(() => {
-    handleCopy();
-    dispatch({ type: "HIDE_MODAL" });
-  }, [handleCopy]);
+  const handleReset = useCallback(() => {
+    dispatch({ type: "RESET" });
+  }, []);
 
-  const openModalWithAction = useCallback(
-    (action: Action) => {
-      const text = window.getSelection()?.toString().trim();
-      const rect = state.selectionRect || getSelectionRect();
-      if (text && rect) {
-        const position = calculateModalPosition(rect);
-        dispatch({ type: "SET_ACTION", action });
-        dispatch({ type: "SHOW_MODAL", text, position, autoRun: action });
-        setTimeout(() => processText(action), 50);
+  const handleApplyFix = useCallback(
+    (issue: Issue) => {
+      // Apply the fix to the SOURCE text (which has the errors)
+      const newText = state.sourceText.replace(issue.original, issue.suggestion);
+      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+
+      // Update result - remove the fixed issue from the list
+      if (state.result && typeof state.result === "object") {
+        const updatedIssues = state.result.issues.filter((i) => i.original !== issue.original);
+        dispatch({
+          type: "SET_RESULT",
+          result: {
+            corrected_text: state.result.corrected_text,
+            issues: updatedIssues,
+          },
+        });
       }
     },
-    [state.selectionRect, processText]
+    [state.result, state.sourceText]
   );
 
-  const handleToolbarRewrite = useCallback(() => {
-    openModalWithAction("PARAPHRASE");
-  }, [openModalWithAction]);
+  const handleCustomSubmit = useCallback(
+    (instruction: string) => {
+      processText("CUSTOM", instruction);
+    },
+    [processText]
+  );
 
-  const handleToolbarSummarize = useCallback(() => {
-    openModalWithAction("SUMMARIZE");
-  }, [openModalWithAction]);
+  // Handle toolbar open - opens modal and auto-runs ANALYZE
+  const handleToolbarOpen = useCallback(() => {
+    const activeElement = document.activeElement;
+    let text = "";
 
-  const handleToolbarMore = useCallback(() => {
-    const text = window.getSelection()?.toString().trim();
-    const rect = state.selectionRect || getSelectionRect();
+    if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
+      const start = activeElement.selectionStart ?? 0;
+      const end = activeElement.selectionEnd ?? 0;
+      text = activeElement.value.slice(start, end).trim();
+    } else {
+      text = window.getSelection()?.toString().trim() || "";
+    }
+
+    const rect = state.selectionRect || getSelectionRect(activeElement);
     if (text && rect) {
       const position = calculateModalPosition(rect);
-      dispatch({ type: "SHOW_MODAL", text, position });
+      dispatch({ type: "SHOW_MODAL", text, position, autoRun: true });
     }
   }, [state.selectionRect]);
 
-  const handleActionChange = useCallback((action: Action, tone?: Tone) => {
-    dispatch({ type: "SET_ACTION", action });
-    if (tone) {
-      dispatch({ type: "SET_TONE", tone });
+  // Auto-run ANALYZE when modal opens with autoRun flag
+  useEffect(() => {
+    if (state.isVisible && state.isLoading && state.sourceText && !state.result) {
+      processText("ANALYZE");
     }
+  }, [state.isVisible, state.isLoading, state.sourceText, state.result, processText]);
+
+  // Debug: Log when app mounts
+  useEffect(() => {
+    console.log("[Lintly] Extension loaded successfully");
   }, []);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
+      // Changed shortcut to Ctrl+Shift+L (or Cmd+Shift+L on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
-        const text = window.getSelection()?.toString().trim();
-        const rect = getSelectionRect();
+        console.log("[Lintly] Shortcut triggered");
+
+        const activeElement = document.activeElement;
+        let text = "";
+
+        if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
+          const start = activeElement.selectionStart ?? 0;
+          const end = activeElement.selectionEnd ?? 0;
+          text = activeElement.value.slice(start, end).trim();
+        } else {
+          text = window.getSelection()?.toString().trim() || "";
+        }
+
+        const rect = getSelectionRect(activeElement);
         if (text && rect) {
           dispatch({ type: "HIDE_TOOLBAR" });
           const position = calculateModalPosition(rect);
-          dispatch({ type: "SHOW_MODAL", text, position });
+          dispatch({ type: "SHOW_MODAL", text, position, autoRun: true });
         }
       }
       if (e.key === "Escape") {
@@ -240,22 +387,44 @@ export default function App() {
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       if (state.isVisible) return;
 
-      setTimeout(() => {
-        const selection = window.getSelection();
-        const text = selection?.toString().trim();
-        if (text && text.length > 0) {
-          const rect = getSelectionRect();
-          if (rect) {
-            const position = calculateToolbarPosition(rect);
-            dispatch({ type: "SHOW_TOOLBAR", position, selectionRect: rect });
-          }
-        } else {
-          dispatch({ type: "HIDE_TOOLBAR" });
-        }
-      }, 10);
+      const activeElement = document.activeElement;
+
+      // Get selected text - handle both textarea and regular selections
+      let text = "";
+      if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
+        const start = activeElement.selectionStart ?? 0;
+        const end = activeElement.selectionEnd ?? 0;
+        text = activeElement.value.slice(start, end).trim();
+      } else {
+        text = window.getSelection()?.toString().trim() || "";
+      }
+
+      if (!text || text.length === 0) {
+        dispatch({ type: "HIDE_TOOLBAR" });
+        return;
+      }
+
+      // Get selection rect
+      let rect = getSelectionRect(activeElement);
+
+      // Fallback: use mouse position if rect failed
+      if (!rect || (rect.top === 0 && rect.left === 0)) {
+        console.log("[Lintly] Using mouse position as fallback");
+        rect = {
+          top: e.clientY - 10,
+          bottom: e.clientY + 10,
+          left: e.clientX - 50,
+          right: e.clientX + 50,
+        };
+      }
+
+      console.log("[Lintly] MouseUp - text:", text.substring(0, 30), "rect:", rect);
+
+      const position = calculateToolbarPosition(rect);
+      dispatch({ type: "SHOW_TOOLBAR", position, selectionRect: rect });
     };
 
     const handleSelectionChange = () => {
@@ -280,12 +449,7 @@ export default function App() {
   return (
     <>
       {state.toolbarPosition && (
-        <SelectionToolbar
-          position={state.toolbarPosition}
-          onRewrite={handleToolbarRewrite}
-          onSummarize={handleToolbarSummarize}
-          onMore={handleToolbarMore}
-        />
+        <SelectionToolbar position={state.toolbarPosition} onOpen={handleToolbarOpen} />
       )}
 
       <LintlyModal
@@ -293,20 +457,14 @@ export default function App() {
         position={state.modalPosition}
         onClose={() => dispatch({ type: "HIDE_MODAL" })}
         sourceText={state.sourceText}
-        onSourceTextChange={(text) => dispatch({ type: "SET_SOURCE_TEXT", text })}
-        customInstruction={state.customInstruction}
-        onCustomInstructionChange={(instruction) =>
-          dispatch({ type: "SET_CUSTOM_INSTRUCTION", instruction })
-        }
         tone={state.tone}
         onToneChange={(tone) => dispatch({ type: "SET_TONE", tone })}
-        action={state.action}
-        onActionClick={() => processText()}
-        onActionChange={handleActionChange}
         isLoading={state.isLoading}
         result={state.result}
+        onApplyFix={handleApplyFix}
         onCopy={handleCopy}
-        onReplace={handleReplace}
+        onReset={handleReset}
+        onCustomSubmit={handleCustomSubmit}
       />
     </>
   );

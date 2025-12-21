@@ -1,29 +1,22 @@
-import { useEffect, useRef } from "react";
-import { X, Copy } from "lucide-react";
-import { OmniInput } from "./OmniInput";
-import { ControlToolbar } from "./ControlToolbar";
-import { SourceTextArea } from "./SourceTextArea";
-import { DiffView } from "./DiffView";
-import type { Action, AnalyzeResult, Issue, Tone } from "@/lib/types";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { ModalHeader } from "./ModalHeader";
+import { TextSurface } from "./TextSurface";
+import { BottomInput } from "./BottomInput";
+import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
 
 interface LintlyModalProps {
   isVisible: boolean;
   position: { x: number; y: number };
   onClose: () => void;
   sourceText: string;
-  fieldIssueCount?: number;
-  onSourceTextChange: (text: string) => void;
-  customInstruction: string;
-  onCustomInstructionChange: (instruction: string) => void;
   tone: Tone;
   onToneChange: (tone: Tone) => void;
-  action: Action;
-  onActionClick: () => void;
-  onActionChange: (action: Action) => void;
   isLoading: boolean;
   result: string | AnalyzeResult | null;
+  onApplyFix: (issue: Issue) => void;
   onCopy: () => void;
-  onReplace: () => void;
+  onReset: () => void;
+  onCustomSubmit: (instruction: string) => void;
 }
 
 export function LintlyModal({
@@ -31,21 +24,17 @@ export function LintlyModal({
   position,
   onClose,
   sourceText,
-  fieldIssueCount = 0,
-  onSourceTextChange,
-  customInstruction,
-  onCustomInstructionChange,
   tone,
   onToneChange,
-  action,
-  onActionClick,
-  onActionChange,
   isLoading,
   result,
+  onApplyFix,
   onCopy,
-  onReplace,
+  onReset,
+  onCustomSubmit,
 }: LintlyModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const [customInstruction, setCustomInstruction] = useState("");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -60,81 +49,126 @@ export function LintlyModal({
     }
   }, [isVisible, onClose]);
 
+  // Reset custom instruction when modal closes
+  useEffect(() => {
+    if (!isVisible) {
+      setCustomInstruction("");
+    }
+  }, [isVisible]);
+
+  // Adjust position to keep modal in viewport - MUST be before early return
+  const adjustedPosition = useMemo(() => {
+    const modalWidth = 560;
+    const modalHeight = 380;
+    const margin = 16;
+
+    let x = position.x;
+    let y = position.y;
+
+    // Adjust horizontal position
+    if (x + modalWidth > window.innerWidth - margin) {
+      x = window.innerWidth - modalWidth - margin;
+    }
+    if (x < margin) {
+      x = margin;
+    }
+
+    // Adjust vertical position
+    if (y + modalHeight > window.innerHeight - margin) {
+      y = window.innerHeight - modalHeight - margin;
+    }
+    if (y < margin) {
+      y = margin;
+    }
+
+    return { x, y };
+  }, [position]);
+
+  // Early return AFTER all hooks
   if (!isVisible) return null;
 
   const issues: Issue[] = result && typeof result === "object" ? result.issues : [];
-  const refinedText =
-    result && typeof result === "object"
-      ? result.corrected_text
-      : typeof result === "string"
-        ? result
-        : "";
 
-  const showDiff = result !== null;
+  // Show sourceText (with errors) when we have issues to highlight
+  // Show corrected_text only when all issues are fixed (issues.length === 0)
+  // For non-ANALYZE results (string), show the result directly
+  const displayText =
+    typeof result === "string"
+      ? result
+      : issues.length > 0
+        ? sourceText  // Show original text with errors highlighted
+        : result?.corrected_text || sourceText;
+
+  // Calculate word count and read time
+  const wordCount = displayText.trim().split(/\s+/).filter(Boolean).length;
+  const readTime = Math.max(1, Math.ceil(wordCount / 200) * 60); // in seconds
 
   const handleModalMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
 
+  const handleSubmit = () => {
+    if (customInstruction.trim()) {
+      onCustomSubmit(customInstruction);
+    }
+  };
+
   return (
-    <div
-      ref={modalRef}
-      onMouseDown={handleModalMouseDown}
-      style={{
-        position: "fixed",
-        left: position.x,
-        top: position.y,
-        zIndex: 2147483646,
-      }}
-      className="w-[500px] glass-panel rounded-2xl animate-in flex flex-col"
-    >
-      <button
-        onClick={onClose}
-        className="absolute -top-2 -right-2 w-6 h-6 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-slate-50 transition-colors z-10"
+    <>
+      {/* Ambient Glows - Subtle cyan/teal */}
+      <div
+        className="ambient-glow-indigo"
+        style={{
+          top: "-15%",
+          right: "5%",
+        }}
+      />
+      <div
+        className="ambient-glow-rose"
+        style={{
+          bottom: "-10%",
+          left: "5%",
+        }}
+      />
+
+      {/* Main Modal Container - Clean white card with soft shadow */}
+      <div
+        ref={modalRef}
+        onMouseDown={handleModalMouseDown}
+        style={{
+          position: "fixed",
+          left: adjustedPosition.x,
+          top: adjustedPosition.y,
+          zIndex: 2147483646,
+        }}
+        className="w-[560px] h-[380px] bg-background rounded-2xl shadow-soft flex overflow-hidden animate-in border border-border/40 ring-1 ring-black/5 dark:ring-white/5"
       >
-        <X className="w-3 h-3 text-slate-500" />
-      </button>
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col min-w-0 bg-background relative rounded-2xl overflow-hidden">
+          {/* Header */}
+          <ModalHeader
+            issues={issues}
+            tone={tone}
+            onToneChange={onToneChange}
+            isLoading={isLoading}
+          />
 
-      <OmniInput
-        value={customInstruction}
-        onChange={onCustomInstructionChange}
-        onSubmit={onActionClick}
-        onActionChange={onActionChange}
-      />
+          {/* Text Surface */}
+          <TextSurface text={displayText} issues={issues} onApplyFix={onApplyFix} />
 
-      <ControlToolbar
-        tone={tone}
-        onToneChange={onToneChange}
-        action={action}
-        onActionClick={onActionClick}
-        issues={issues}
-        fieldIssueCount={fieldIssueCount}
-        isLoading={isLoading}
-      />
-
-      <SourceTextArea value={sourceText} onChange={onSourceTextChange} />
-
-      {showDiff && (
-        <>
-          <DiffView original={sourceText} refined={refinedText} issues={issues} />
-          <div className="bg-white px-5 py-3 border-t border-slate-100 flex items-center justify-end gap-2 rounded-b-2xl">
-            <button
-              onClick={onCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              Copy
-            </button>
-            <button
-              onClick={onReplace}
-              disabled={!refinedText}
-              className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-              Replace Selection
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+          {/* Bottom Input */}
+          <BottomInput
+            value={customInstruction}
+            onChange={setCustomInstruction}
+            onSubmit={handleSubmit}
+            wordCount={wordCount}
+            readTime={readTime}
+            onReset={onReset}
+            onCopy={onCopy}
+            isLoading={isLoading}
+          />
+        </main>
+      </div>
+    </>
   );
 }

@@ -3,12 +3,10 @@ import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
 let creating: Promise<void> | null = null;
 
 async function setupOffscreen() {
-  // @ts-expect-error: MV3 API
   const contexts = await browser.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
   if (contexts.length > 0) return;
   if (creating) return creating;
 
-  // @ts-expect-error: MV3 API
   creating = browser.offscreen.createDocument({
     url: "/offscreen.html",
     reasons: ["WORKERS"],

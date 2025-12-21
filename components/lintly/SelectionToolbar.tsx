@@ -1,18 +1,12 @@
-import { Sparkles, FileText, MoreHorizontal } from "lucide-react";
+import { GripVertical, Wand2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface SelectionToolbarProps {
   position: { x: number; y: number };
-  onRewrite: () => void;
-  onSummarize: () => void;
-  onMore: () => void;
+  onOpen: () => void;
 }
 
-export function SelectionToolbar({
-  position,
-  onRewrite,
-  onSummarize,
-  onMore,
-}: SelectionToolbarProps) {
+export function SelectionToolbar({ position, onOpen }: SelectionToolbarProps) {
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -27,38 +21,24 @@ export function SelectionToolbar({
         top: position.y,
         zIndex: 2147483647,
       }}
-      className="flex items-center bg-white/95 backdrop-blur-xl rounded-lg shadow-lg border border-slate-200/50 animate-in"
+      className="flex items-center gap-2 bg-background border border-border/60 rounded-full shadow-soft p-1.5 pr-3 hover:scale-105 transition-transform duration-300 animate-in"
     >
-      <button
-        onClick={onRewrite}
+      {/* Grip Handle (visual only) */}
+      <div className="w-8 h-8 rounded-full bg-secondary/80 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab transition-colors">
+        <GripVertical className="w-4 h-4" />
+      </div>
+
+      {/* Wand Button - Opens modal with ANALYZE - Purple primary */}
+      <Button
+        onClick={onOpen}
         onMouseDown={handleMouseDown}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors rounded-l-lg"
+        variant="ghost"
+        size="icon-sm"
+        className="rounded-full h-8 w-8 bg-purple-500 hover:bg-purple-400 dark:bg-purple-500 dark:hover:bg-purple-400 text-white shadow-sm"
+        title="Analyze text"
       >
-        <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
-        <span>Rewrite</span>
-      </button>
-
-      <div className="w-px h-5 bg-slate-200" />
-
-      <button
-        onClick={onSummarize}
-        onMouseDown={handleMouseDown}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors"
-      >
-        <FileText className="w-3.5 h-3.5 text-amber-500" />
-        <span>Summarize</span>
-      </button>
-
-      <div className="w-px h-5 bg-slate-200" />
-
-      <button
-        onClick={onMore}
-        onMouseDown={handleMouseDown}
-        className="flex items-center px-2.5 py-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors rounded-r-lg"
-        title="More options"
-      >
-        <MoreHorizontal className="w-4 h-4" />
-      </button>
+        <Wand2 className="w-4 h-4" />
+      </Button>
     </div>
   );
 }

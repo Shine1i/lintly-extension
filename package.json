@@ -7,6 +7,7 @@
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
+    "typecheck": "bunx tsc --noEmit",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

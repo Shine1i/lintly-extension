@@ -7,10 +7,12 @@ import {
   TONE_PROMPTS,
 } from "@/lib/prompts";
 
-const API_URL = "http://192.168.0.147:8000/v1/chat/completions";
-const MODEL = "moogin/lintly-lfm2-700m-exp-new";
+const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
+const MODEL = "moogin/lintly-lfm2-700m-dpo-new";
 
 async function callAPI(systemPrompt: string, userText: string): Promise<string> {
+  console.log("[Lintly API] Calling API with text:", userText.substring(0, 100) + "...");
+
   const res = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -26,11 +28,16 @@ async function callAPI(systemPrompt: string, userText: string): Promise<string> 
     }),
   });
 
+  console.log("[Lintly API] Response status:", res.status, res.statusText);
+
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();
+  console.log("[Lintly API] Raw response:", JSON.stringify(data, null, 2));
+  console.log("[Lintly API] Content:", data.choices[0].message.content);
+
   return data.choices[0].message.content;
 }
 
@@ -58,13 +65,17 @@ async function processText(
   text: string,
   options?: { tone?: Tone; customInstruction?: string }
 ): Promise<string | AnalyzeResult> {
+  console.log("[Lintly API] Processing action:", action);
   const systemPrompt = getSystemPrompt(action, options);
   const response = await callAPI(systemPrompt, text);
 
   if (action === "ANALYZE") {
     try {
-      return JSON.parse(response) as AnalyzeResult;
-    } catch {
+      const parsed = JSON.parse(response) as AnalyzeResult;
+      console.log("[Lintly API] Parsed ANALYZE result:", parsed);
+      return parsed;
+    } catch (e) {
+      console.log("[Lintly API] Failed to parse as JSON, using raw response:", e);
       return { corrected_text: response, issues: [] };
     }
   }
@@ -73,11 +84,22 @@ async function processText(
 }
 
 browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
-  if (msg.target !== "offscreen" || msg.type !== "GENERATE") return;
+  console.log("[Lintly API] Received message:", msg);
+
+  if (msg.target !== "offscreen" || msg.type !== "GENERATE") {
+    console.log("[Lintly API] Ignoring message (wrong target/type)");
+    return;
+  }
 
   processText(msg.action, msg.text, msg.options)
-    .then((result) => respond({ success: true, result }))
-    .catch((e: Error) => respond({ success: false, error: e.message }));
+    .then((result) => {
+      console.log("[Lintly API] Sending success response:", result);
+      respond({ success: true, result });
+    })
+    .catch((e: Error) => {
+      console.log("[Lintly API] Sending error response:", e.message);
+      respond({ success: false, error: e.message });
+    });
 
   return true;
 });
