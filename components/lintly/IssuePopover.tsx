@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Zap, ArrowRight } from "lucide-react";
 import type { Issue, Severity } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -55,12 +56,19 @@ function getIssueTypeLabel(type: string): string {
 }
 
 export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssuePopoverProps) {
+  const [open, setOpen] = useState(false);
   const styles = getSeverityStyles(issue.severity);
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <span className={`${highlightClass} rounded-md cursor-pointer mx-0.5`}>
+        <span
+          className={`${highlightClass} rounded-md cursor-pointer mx-0.5`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((prev) => !prev);
+          }}
+        >
           {text}
         </span>
       </PopoverTrigger>
@@ -68,6 +76,15 @@ export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssueP
         className="w-[260px] p-0 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/5"
         sideOffset={12}
         align="center"
+        onInteractOutside={(e) => {
+          // In Shadow DOM, treat clicks from same shadow root as "inside"
+          const target = e.target as Node;
+          const root = target.getRootNode?.() as ShadowRoot | Document;
+          if (root instanceof ShadowRoot) {
+            e.preventDefault();
+            setOpen(false);
+          }
+        }}
       >
         {/* Header - Color coded */}
         <div className={`flex items-center gap-2 px-4 py-2.5 ${styles.headerBg} border-b ${styles.border}`}>
@@ -101,6 +118,7 @@ export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssueP
               onClick={(e) => {
                 e.stopPropagation();
                 onApplyFix();
+                setOpen(false);
               }}
               size="sm"
               className="flex-1 h-8 text-xs font-bold rounded-lg shadow-sm hover:shadow"

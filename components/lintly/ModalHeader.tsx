@@ -43,38 +43,22 @@ function getHealthScore(issues: Issue[]): number {
   return Math.max(0, 100 - penalties);
 }
 
-function getHealthBadgeStyle(score: number): { bg: string; text: string; dot: string } {
-  if (score >= 80) {
-    return {
-      bg: "bg-purple-500 hover:bg-purple-400 dark:bg-purple-500 dark:hover:bg-purple-400",
-      text: "text-white",
-      dot: "bg-white",
-    };
-  }
-  if (score >= 60) {
-    return {
-      bg: "bg-amber-500 hover:bg-amber-400 dark:bg-amber-500 dark:hover:bg-amber-400",
-      text: "text-white",
-      dot: "bg-white",
-    };
-  }
-  return {
-    bg: "bg-red-500 hover:bg-red-400 dark:bg-red-500 dark:hover:bg-red-400",
-    text: "text-white",
-    dot: "bg-white",
-  };
+function getHealthDotStyle(score: number): React.CSSProperties {
+  if (score >= 80) return { backgroundColor: "var(--issue-info)" }; // cyan - good
+  if (score >= 60) return { backgroundColor: "var(--issue-warning)" }; // amber - medium
+  return { backgroundColor: "var(--issue-error)" }; // red - bad
 }
 
-function getSeverityDotColor(severity: Severity): string {
+function getSeverityDotStyle(severity: Severity): React.CSSProperties {
   switch (severity) {
     case "error":
-      return "bg-status-error";
+      return { backgroundColor: "var(--issue-error)" };
     case "warning":
-      return "bg-status-warning";
+      return { backgroundColor: "var(--issue-warning)" };
     case "suggestion":
-      return "bg-status-info";
+      return { backgroundColor: "var(--issue-info)" };
     default:
-      return "bg-muted-foreground";
+      return {};
   }
 }
 
@@ -87,7 +71,7 @@ function getIssueTypeLabel(type: string): string {
 
 export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHeaderProps) {
   const healthScore = getHealthScore(issues);
-  const healthStyle = getHealthBadgeStyle(healthScore);
+  const healthDotStyle = getHealthDotStyle(healthScore);
 
   // Group issues by type
   const issuesByType = issues.reduce(
@@ -112,15 +96,17 @@ export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHead
 
       {/* Right side */}
       <div className="flex items-center gap-3">
-        {/* Health Badge Dropdown - Cyan pill style (using native button to avoid variant conflicts) */}
+        {/* Health Badge Dropdown - Outline style matching tone selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${healthStyle.bg} ${healthStyle.text} shadow-sm hover:shadow-md transition-all cursor-pointer`}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 rounded-full border-border/60 hover:border-border bg-background"
             >
-              <div className={`w-2 h-2 rounded-full ${healthStyle.dot} animate-pulse`} />
-              <span className="text-xs font-bold">Health: {healthScore}%</span>
-            </button>
+              <div className="w-2 h-2 rounded-full animate-pulse" style={healthDotStyle} />
+              <span className="text-xs font-semibold text-foreground">Health: {healthScore}%</span>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[220px] rounded-2xl">
             <DropdownMenuLabel className="flex justify-between items-center px-4 py-2.5 bg-muted/50">
@@ -133,12 +119,12 @@ export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHead
             <div className="p-2 space-y-1">
               {Object.entries(issuesByType).map(([type, count]) => {
                 const issueOfType = issues.find((i) => i.type === type);
-                const dotColor = issueOfType ? getSeverityDotColor(issueOfType.severity) : "bg-muted-foreground";
+                const dotStyle = issueOfType ? getSeverityDotStyle(issueOfType.severity) : {};
 
                 return (
                   <DropdownMenuItem key={type} className="justify-between px-3 py-2 rounded-xl">
                     <span className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+                      <div className="w-2 h-2 rounded-full" style={dotStyle} />
                       <span className="text-xs font-semibold">{getIssueTypeLabel(type)}</span>
                     </span>
                     <span className="text-xs font-bold text-muted-foreground">{count}</span>
