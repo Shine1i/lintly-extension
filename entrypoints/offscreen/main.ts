@@ -8,7 +8,7 @@ import {
 } from "@/lib/prompts";
 
 const API_URL = "http://192.168.0.147:8000/v1/chat/completions";
-const MODEL = "moogin/lintly-lfm2-700m-dpo-final";
+const MODEL = "moogin/lintly-lfm2-700m-exp-new";
 
 async function callAPI(systemPrompt: string, userText: string): Promise<string> {
   const res = await fetch(API_URL, {
@@ -20,6 +20,9 @@ async function callAPI(systemPrompt: string, userText: string): Promise<string> 
         { role: "system", content: systemPrompt },
         { role: "user", content: userText },
       ],
+      temperature: 0.3,
+      min_p: 0.15,
+      repetition_penalty: 1.05,
     }),
   });
 

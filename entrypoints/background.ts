@@ -1,6 +1,4 @@
-import type { ProcessRequest, BackgroundAnalyzeRequest, OffscreenMessage } from "@/lib/types";
-
-type ContentMessage = ProcessRequest | BackgroundAnalyzeRequest;
+import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
 
 let creating: Promise<void> | null = null;
 
@@ -34,7 +32,7 @@ async function sendToOffscreen(msg: OffscreenMessage) {
 }
 
 export default defineBackground(() => {
-  browser.runtime.onMessage.addListener((msg: ContentMessage, _, respond) => {
+  browser.runtime.onMessage.addListener((msg: ProcessRequest, _, respond) => {
     if (msg.type === "PROCESS_TEXT") {
       sendToOffscreen({
         target: "offscreen",
@@ -45,24 +43,6 @@ export default defineBackground(() => {
       })
         .then(respond)
         .catch((e) => respond({ success: false, error: String(e) }));
-      return true;
-    }
-
-    if (msg.type === "BACKGROUND_ANALYZE") {
-      sendToOffscreen({
-        target: "offscreen",
-        type: "GENERATE",
-        action: "ANALYZE",
-        text: msg.text,
-      })
-        .then((result) => {
-          respond({
-            success: true,
-            elementId: msg.elementId,
-            issues: result?.result?.issues || [],
-          });
-        })
-        .catch((e) => respond({ success: false, elementId: msg.elementId, error: String(e) }));
       return true;
     }
   });

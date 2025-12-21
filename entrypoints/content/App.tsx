@@ -1,10 +1,7 @@
-import { useReducer, useEffect, useCallback, useRef } from "react";
+import { useReducer, useEffect, useCallback } from "react";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
-import { isEditableElement, getEditableText, generateElementId } from "@/lib/editableDetector";
-import { scheduleAnalysis, setAnalysisCallback, getEditableState } from "@/lib/backgroundAnalyzer";
-import { setTargetElement, updateIssues, destroy as destroyUnderlines } from "@/lib/underlineManager";
-import type { Action, AnalyzeResult, ProcessResponse, Tone, EditableState, IssueWithPosition } from "@/lib/types";
+import type { Action, AnalyzeResult, ProcessResponse, Tone } from "@/lib/types";
 
 interface SelectionRect {
   top: number;
@@ -25,8 +22,6 @@ interface State {
   modalPosition: { x: number; y: number };
   selectionRect: SelectionRect | null;
   error: string | null;
-  activeElementId: string | null;
-  fieldIssueCount: number;
 }
 
 type AppAction =
@@ -40,9 +35,7 @@ type AppAction =
   | { type: "SET_TONE"; tone: Tone }
   | { type: "SET_ACTION"; action: Action }
   | { type: "SHOW_TOOLBAR"; position: { x: number; y: number }; selectionRect: SelectionRect }
-  | { type: "HIDE_TOOLBAR" }
-  | { type: "SET_ACTIVE_ELEMENT"; elementId: string | null }
-  | { type: "SET_FIELD_ISSUE_COUNT"; count: number };
+  | { type: "HIDE_TOOLBAR" };
 
 const initialState: State = {
   isVisible: false,
@@ -56,8 +49,6 @@ const initialState: State = {
   modalPosition: { x: 100, y: 100 },
   selectionRect: null,
   error: null,
-  activeElementId: null,
-  fieldIssueCount: 0,
 };
 
 function reducer(state: State, action: AppAction): State {
@@ -93,10 +84,6 @@ function reducer(state: State, action: AppAction): State {
       return { ...state, toolbarPosition: action.position, selectionRect: action.selectionRect };
     case "HIDE_TOOLBAR":
       return { ...state, toolbarPosition: null, selectionRect: null };
-    case "SET_ACTIVE_ELEMENT":
-      return { ...state, activeElementId: action.elementId, fieldIssueCount: 0 };
-    case "SET_FIELD_ISSUE_COUNT":
-      return { ...state, fieldIssueCount: action.count };
     default:
       return state;
   }
@@ -148,11 +135,6 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const activeElementRef = useRef<HTMLElement | null>(null);
-
-  const handleIssueClick = useCallback((issue: IssueWithPosition) => {
-    console.log("[Lintly] Issue clicked:", issue);
-  }, []);
 
   const processText = useCallback(
     async (actionOverride?: Action) => {
@@ -238,68 +220,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setAnalysisCallback((editableState: EditableState) => {
-      if (editableState.elementId === state.activeElementId && activeElementRef.current) {
-        dispatch({ type: "SET_FIELD_ISSUE_COUNT", count: editableState.issues.length });
-        updateIssues(editableState.issues, handleIssueClick);
-      }
-    });
-  }, [state.activeElementId, handleIssueClick]);
-
-  useEffect(() => {
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as Element;
-      if (isEditableElement(target)) {
-        const elementId = generateElementId(target);
-        const text = getEditableText(target);
-
-        activeElementRef.current = target as HTMLElement;
-        dispatch({ type: "SET_ACTIVE_ELEMENT", elementId });
-
-        const existingState = getEditableState(elementId);
-        if (existingState) {
-          dispatch({ type: "SET_FIELD_ISSUE_COUNT", count: existingState.issues.length });
-          setTargetElement(target as HTMLElement, existingState.issues, handleIssueClick);
-        } else {
-          setTargetElement(target as HTMLElement, [], handleIssueClick);
-          if (text.trim().length > 0) {
-            scheduleAnalysis(elementId, text, true);
-          }
-        }
-      }
-    };
-
-    const handleInput = (e: Event) => {
-      const target = e.target as Element;
-      if (isEditableElement(target)) {
-        const elementId = generateElementId(target);
-        const text = getEditableText(target);
-        scheduleAnalysis(elementId, text);
-      }
-    };
-
-    const handleFocusOut = (e: FocusEvent) => {
-      const relatedTarget = e.relatedTarget as Element | null;
-      if (!relatedTarget || !isEditableElement(relatedTarget)) {
-        activeElementRef.current = null;
-        dispatch({ type: "SET_ACTIVE_ELEMENT", elementId: null });
-        setTargetElement(null);
-      }
-    };
-
-    document.addEventListener("focusin", handleFocusIn);
-    document.addEventListener("input", handleInput);
-    document.addEventListener("focusout", handleFocusOut);
-
-    return () => {
-      document.removeEventListener("focusin", handleFocusIn);
-      document.removeEventListener("input", handleInput);
-      document.removeEventListener("focusout", handleFocusOut);
-      destroyUnderlines();
-    };
-  }, [handleIssueClick]);
-
-  useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
         e.preventDefault();
@@ -373,7 +293,6 @@ export default function App() {
         position={state.modalPosition}
         onClose={() => dispatch({ type: "HIDE_MODAL" })}
         sourceText={state.sourceText}
-        fieldIssueCount={state.fieldIssueCount}
         onSourceTextChange={(text) => dispatch({ type: "SET_SOURCE_TEXT", text })}
         customInstruction={state.customInstruction}
         onCustomInstructionChange={(instruction) =>
