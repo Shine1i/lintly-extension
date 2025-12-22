@@ -14,9 +14,11 @@ interface State {
   isVisible: boolean;
   isLoading: boolean;
   sourceText: string;
+  originalSourceText: string;
   tone: Tone;
   action: Action;
   result: string | AnalyzeResult | null;
+  originalResult: string | AnalyzeResult | null;
   toolbarPosition: { x: number; y: number } | null;
   modalPosition: { x: number; y: number };
   selectionRect: SelectionRect | null;
@@ -40,9 +42,11 @@ const initialState: State = {
   isVisible: false,
   isLoading: false,
   sourceText: "",
+  originalSourceText: "",
   tone: "professional",
   action: "ANALYZE",
   result: null,
+  originalResult: null,
   toolbarPosition: null,
   modalPosition: { x: 100, y: 100 },
   selectionRect: null,
@@ -56,18 +60,27 @@ function reducer(state: State, action: AppAction): State {
         ...state,
         isVisible: true,
         sourceText: action.text,
+        originalSourceText: action.text,
         result: null,
+        originalResult: null,
         toolbarPosition: null,
         modalPosition: action.position,
         action: "ANALYZE",
         isLoading: !!action.autoRun,
       };
     case "HIDE_MODAL":
-      return { ...state, isVisible: false, result: null, selectionRect: null };
+      return { ...state, isVisible: false, result: null, originalResult: null, selectionRect: null };
     case "SET_LOADING":
       return { ...state, isLoading: action.loading };
     case "SET_RESULT":
-      return { ...state, result: action.result, isLoading: false };
+      // Store as original only if this is the first result (from initial ANALYZE)
+      const isFirstResult = state.originalResult === null;
+      return {
+        ...state,
+        result: action.result,
+        originalResult: isFirstResult ? action.result : state.originalResult,
+        isLoading: false,
+      };
     case "SET_ERROR":
       return { ...state, error: action.error, isLoading: false };
     case "SET_SOURCE_TEXT":
@@ -81,7 +94,13 @@ function reducer(state: State, action: AppAction): State {
     case "HIDE_TOOLBAR":
       return { ...state, toolbarPosition: null, selectionRect: null };
     case "RESET":
-      return { ...state, result: null, isLoading: false, error: null };
+      return {
+        ...state,
+        sourceText: state.originalSourceText,
+        result: state.originalResult,
+        isLoading: false,
+        error: null,
+      };
     default:
       return state;
   }
@@ -314,6 +333,28 @@ export default function App() {
     [state.result, state.sourceText]
   );
 
+  const handleApplyAllFixes = useCallback(() => {
+    if (!state.result || typeof state.result !== "object" || state.result.issues.length === 0) {
+      return;
+    }
+
+    // Apply all fixes to the source text
+    let newText = state.sourceText;
+    for (const issue of state.result.issues) {
+      newText = newText.replace(issue.original, issue.suggestion);
+    }
+    dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+
+    // Clear all issues
+    dispatch({
+      type: "SET_RESULT",
+      result: {
+        corrected_text: state.result.corrected_text,
+        issues: [],
+      },
+    });
+  }, [state.result, state.sourceText]);
+
   const handleCustomSubmit = useCallback(
     (instruction: string) => {
       processText("CUSTOM", instruction);
@@ -462,6 +503,7 @@ export default function App() {
         isLoading={state.isLoading}
         result={state.result}
         onApplyFix={handleApplyFix}
+        onApplyAllFixes={handleApplyAllFixes}
         onCopy={handleCopy}
         onReset={handleReset}
         onCustomSubmit={handleCustomSubmit}

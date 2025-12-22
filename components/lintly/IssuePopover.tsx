@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Zap, ArrowRight } from "lucide-react";
 import type { Issue, Severity } from "@/lib/types";
-import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -127,25 +126,10 @@ export function IssuePopover({
 
           {/* Explanation (if available) */}
           {issue.explanation && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
               {issue.explanation}
             </p>
           )}
-
-          {/* Apply Fix Button */}
-          <div className="flex gap-2 mt-1">
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                onApplyFix();
-                setOpen(false);
-              }}
-              size="sm"
-              className="flex-1 h-8 text-xs font-bold rounded-lg shadow-sm hover:shadow"
-            >
-              Apply Fix
-            </Button>
-          </div>
         </div>
       </PopoverContent>
     </Popover>

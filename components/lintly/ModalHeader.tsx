@@ -26,26 +26,9 @@ const TONES: { value: Tone; label: string }[] = [
   { value: "academic", label: "Academic" },
 ];
 
-function getHealthScore(issues: Issue[]): number {
-  const penalties = issues.reduce((acc, issue) => {
-    switch (issue.severity) {
-      case "error":
-        return acc + 10;
-      case "warning":
-        return acc + 5;
-      case "suggestion":
-        return acc + 2;
-      default:
-        return acc;
-    }
-  }, 0);
-  return Math.max(0, 100 - penalties);
-}
-
-function getHealthDotStyle(score: number): React.CSSProperties {
-  if (score >= 80) return { backgroundColor: "var(--issue-info)" }; // cyan - good
-  if (score >= 60) return { backgroundColor: "var(--issue-warning)" }; // amber - medium
-  return { backgroundColor: "var(--issue-error)" }; // red - bad
+function getHealthDotColor(issueCount: number): string {
+  if (issueCount === 0) return "bg-emerald-500";
+  return "bg-red-500";
 }
 
 function getSeverityDotStyle(severity: Severity): React.CSSProperties {
@@ -69,8 +52,7 @@ function getIssueTypeLabel(type: string): string {
 }
 
 export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
-  const healthScore = getHealthScore(issues);
-  const healthDotStyle = getHealthDotStyle(healthScore);
+  const healthDotColor = getHealthDotColor(issues.length);
 
   // Group issues by type
   const issuesByType = issues.reduce(
@@ -86,7 +68,7 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   return (
     <header className="h-12 flex items-center justify-end px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
       <div className="flex items-center gap-2">
-        {/* Health Badge Dropdown - Outline style matching tone selector */}
+        {/* Tone Selector Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -94,9 +76,30 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
               size="sm"
               className="h-8 px-3 rounded-xl border-border/60 hover:border-border bg-background"
             >
-              <div className="w-2 h-2 rounded-full animate-pulse" style={healthDotStyle} />
-              <span className="text-xs font-semibold text-foreground">Health: {healthScore}%</span>
+              <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Tone</span>
+              <span className="text-xs text-foreground font-semibold">{currentToneLabel}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
             </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[150px] rounded-2xl">
+            <DropdownMenuRadioGroup value={tone} onValueChange={(v) => onToneChange(v as Tone)}>
+              {TONES.map((t) => (
+                <DropdownMenuRadioItem key={t.value} value={t.value} className="text-xs rounded-xl mx-1">
+                  {t.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Health Indicator Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={`min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${healthDotColor} ${issues.length > 0 ? "animate-pulse" : ""}`}
+            >
+              {issues.length}
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[220px] rounded-2xl">
             <DropdownMenuLabel className="flex justify-between items-center px-4 py-2.5 bg-muted/50">
@@ -127,30 +130,6 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
                 </DropdownMenuItem>
               )}
             </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Tone Selector Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 rounded-xl border-border/60 hover:border-border bg-background"
-            >
-              <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Tone</span>
-              <span className="text-xs text-foreground font-semibold">{currentToneLabel}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[150px] rounded-2xl">
-            <DropdownMenuRadioGroup value={tone} onValueChange={(v) => onToneChange(v as Tone)}>
-              {TONES.map((t) => (
-                <DropdownMenuRadioItem key={t.value} value={t.value} className="text-xs rounded-xl mx-1">
-                  {t.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

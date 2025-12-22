@@ -23,6 +23,9 @@ export function BottomInput({
   isLoading,
 }: BottomInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Stop all key events from propagating to prevent page shortcuts
+    e.stopPropagation();
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSubmit();
@@ -51,8 +54,9 @@ export function BottomInput({
             <Button
               onClick={onSubmit}
               disabled={isLoading || !value.trim()}
+              variant="default"
               size="icon-sm"
-              className="h-7 w-7 rounded-lg bg-secondary hover:bg-primary hover:text-primary-foreground transition-all"
+              className="h-7 w-7 rounded-lg"
             >
               <ArrowUp className="w-3.5 h-3.5" />
             </Button>

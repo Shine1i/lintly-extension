@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from "react";
+import { Wand2 } from "lucide-react";
 import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
+import { Button } from "@/components/ui/button";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
 
 interface LintlyModalProps {
@@ -14,6 +16,7 @@ interface LintlyModalProps {
   isLoading: boolean;
   result: string | AnalyzeResult | null;
   onApplyFix: (issue: Issue) => void;
+  onApplyAllFixes: () => void;
   onCopy: () => void;
   onReset: () => void;
   onCustomSubmit: (instruction: string) => void;
@@ -29,6 +32,7 @@ export function LintlyModal({
   isLoading,
   result,
   onApplyFix,
+  onApplyAllFixes,
   onCopy,
   onReset,
   onCustomSubmit,
@@ -154,6 +158,24 @@ export function LintlyModal({
 
           {/* Text Surface */}
           <TextSurface text={displayText} issues={issues} onApplyFix={onApplyFix} isLoading={isLoading} />
+
+          {/* Issues Action Bar - Only show when there are issues */}
+          {issues.length > 0 && (
+            <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{issues.length}</span> {issues.length === 1 ? "issue" : "issues"} found
+              </span>
+              <Button
+                onClick={onApplyAllFixes}
+                variant="default"
+                size="sm"
+                className="h-7 px-2.5 text-xs font-medium"
+              >
+                <Wand2 className="w-3.5 h-3.5 mr-1.5" />
+                Apply All
+              </Button>
+            </div>
+          )}
 
           {/* Bottom Input */}
           <BottomInput
