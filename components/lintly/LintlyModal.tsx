@@ -150,11 +150,10 @@ export function LintlyModal({
             issues={issues}
             tone={tone}
             onToneChange={onToneChange}
-            isLoading={isLoading}
           />
 
           {/* Text Surface */}
-          <TextSurface text={displayText} issues={issues} onApplyFix={onApplyFix} />
+          <TextSurface text={displayText} issues={issues} onApplyFix={onApplyFix} isLoading={isLoading} />
 
           {/* Bottom Input */}
           <BottomInput

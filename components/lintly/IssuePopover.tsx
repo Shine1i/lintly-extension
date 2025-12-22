@@ -15,35 +15,40 @@ interface IssuePopoverProps {
   onApplyFix: () => void;
 }
 
-function getSeverityStyles(severity: Severity): { headerBg: string; icon: string; label: string; border: string } {
+function getSeverityStyles(severity: Severity): {
+  headerBg: string;
+  icon: string;
+  label: string;
+  border: string;
+} {
   switch (severity) {
     case "error":
       return {
         headerBg: "bg-red-50 dark:bg-red-500/10",
         icon: "text-red-500 dark:text-red-400",
         label: "text-red-600 dark:text-red-400",
-        border: "border-red-100 dark:border-red-500/20"
+        border: "border-red-100 dark:border-red-500/20",
       };
     case "warning":
       return {
         headerBg: "bg-amber-50 dark:bg-amber-500/10",
         icon: "text-amber-500 dark:text-amber-400",
         label: "text-amber-600 dark:text-amber-400",
-        border: "border-amber-100 dark:border-amber-500/20"
+        border: "border-amber-100 dark:border-amber-500/20",
       };
     case "suggestion":
       return {
         headerBg: "bg-indigo-50 dark:bg-indigo-500/10",
         icon: "text-indigo-500 dark:text-indigo-400",
         label: "text-indigo-600 dark:text-indigo-400",
-        border: "border-indigo-100 dark:border-indigo-500/20"
+        border: "border-indigo-100 dark:border-indigo-500/20",
       };
     default:
       return {
         headerBg: "bg-muted",
         icon: "text-muted-foreground",
         label: "text-muted-foreground",
-        border: "border-border"
+        border: "border-border",
       };
   }
 }
@@ -55,7 +60,12 @@ function getIssueTypeLabel(type: string): string {
     .join(" ");
 }
 
-export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssuePopoverProps) {
+export function IssuePopover({
+  issue,
+  text,
+  highlightClass,
+  onApplyFix,
+}: IssuePopoverProps) {
   const [open, setOpen] = useState(false);
   const styles = getSeverityStyles(issue.severity);
 
@@ -64,16 +74,13 @@ export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssueP
       <PopoverTrigger asChild>
         <span
           className={`${highlightClass} rounded-md cursor-pointer mx-0.5`}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen((prev) => !prev);
-          }}
+          onClick={(e) => e.stopPropagation()}
         >
           {text}
         </span>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[260px] p-0 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/5"
+        className="w-[320px] p-0 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/5"
         sideOffset={12}
         align="center"
         onInteractOutside={(e) => {
@@ -87,29 +94,42 @@ export function IssuePopover({ issue, text, highlightClass, onApplyFix }: IssueP
         }}
       >
         {/* Header - Color coded */}
-        <div className={`flex items-center gap-2 px-4 py-2.5 ${styles.headerBg} border-b ${styles.border}`}>
+        <div
+          className={`flex items-center gap-2 px-4 py-2.5 ${styles.headerBg} border-b ${styles.border}`}
+        >
           <Zap className={`w-3.5 h-3.5 ${styles.icon} fill-current`} />
-          <span className={`text-[10px] font-bold uppercase tracking-wider ${styles.label}`}>
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider ${styles.label}`}
+          >
             {getIssueTypeLabel(issue.type)}
           </span>
         </div>
 
         {/* Body */}
         <div className="p-4">
-          {/* Original → Suggestion */}
-          <div className="flex items-center gap-3 text-sm mb-3">
+          {/* Original → Suggestion (clickable) */}
+          <div
+            className="flex items-center gap-3 text-sm mb-3 cursor-pointer hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onApplyFix();
+              setOpen(false);
+            }}
+          >
             <span className="line-through text-muted-foreground decoration-muted-foreground/50 decoration-2">
               {issue.original}
             </span>
             <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-500/10 px-2 py-0.5 rounded-md border border-teal-100 dark:border-teal-500/20">
+            <span className="font-bold px-2 py-0.5 rounded-md">
               {issue.suggestion}
             </span>
           </div>
 
           {/* Explanation (if available) */}
           {issue.explanation && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">{issue.explanation}</p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
+              {issue.explanation}
+            </p>
           )}
 
           {/* Apply Fix Button */}

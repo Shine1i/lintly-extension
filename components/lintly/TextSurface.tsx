@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { Issue, Severity } from "@/lib/types";
 import { IssuePopover } from "./IssuePopover";
 
@@ -6,6 +6,7 @@ interface TextSurfaceProps {
   text: string;
   issues: Issue[];
   onApplyFix: (issue: Issue) => void;
+  isLoading?: boolean;
 }
 
 interface TextSegment {
@@ -90,7 +91,27 @@ function parseTextWithIssues(text: string, issues: Issue[]): TextSegment[] {
   return segments;
 }
 
-export function TextSurface({ text, issues, onApplyFix }: TextSurfaceProps) {
+export function TextSurface({ text, issues, onApplyFix, isLoading }: TextSurfaceProps) {
+  const [showShimmer, setShowShimmer] = useState(false);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      // Start loading: show shimmer immediately
+      setShowShimmer(true);
+      setIsFadingOut(false);
+    } else if (showShimmer) {
+      // Stop loading: trigger fade-out
+      setIsFadingOut(true);
+      // Remove from DOM after animation completes
+      const timer = setTimeout(() => {
+        setShowShimmer(false);
+        setIsFadingOut(false);
+      }, 400); // Match CSS transition duration
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, showShimmer]);
+
   const segments = useMemo(() => {
     console.log("[Lintly TextSurface] Parsing text:", text.substring(0, 50) + "...");
     console.log("[Lintly TextSurface] Issues:", issues);
@@ -100,7 +121,14 @@ export function TextSurface({ text, issues, onApplyFix }: TextSurfaceProps) {
   }, [text, issues]);
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-5 relative">
+    <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-5 relative overflow-x-hidden">
+      {/* Shimmer scanning overlay when loading */}
+      {showShimmer && (
+        <div className={`shimmer-container ${isFadingOut ? "fade-out" : ""}`}>
+          <div className="shimmer-bar" />
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto">
         {/* Text Content */}
         <p className="text-[15px] text-foreground leading-[1.85] font-normal">

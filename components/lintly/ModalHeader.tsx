@@ -16,7 +16,6 @@ interface ModalHeaderProps {
   issues: Issue[];
   tone: Tone;
   onToneChange: (tone: Tone) => void;
-  isLoading?: boolean;
 }
 
 const TONES: { value: Tone; label: string }[] = [
@@ -69,7 +68,7 @@ function getIssueTypeLabel(type: string): string {
     .join(" ");
 }
 
-export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHeaderProps) {
+export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   const healthScore = getHealthScore(issues);
   const healthDotStyle = getHealthDotStyle(healthScore);
 
@@ -85,24 +84,15 @@ export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHead
   const currentToneLabel = TONES.find((t) => t.value === tone)?.label || "Professional";
 
   return (
-    <header className="h-12 flex items-center justify-between px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
-      {/* Left side */}
-      <div className="flex items-center gap-2.5">
-        <h1 className="text-xs font-bold text-foreground">Analysis Mode</h1>
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100 font-semibold tracking-wide">
-          {isLoading ? "Processing..." : "AUTO-RUN"}
-        </span>
-      </div>
-
-      {/* Right side */}
-      <div className="flex items-center gap-3">
+    <header className="h-12 flex items-center justify-end px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
+      <div className="flex items-center gap-2">
         {/* Health Badge Dropdown - Outline style matching tone selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="h-8 px-3 rounded-full border-border/60 hover:border-border bg-background"
+              className="h-8 px-3 rounded-xl border-border/60 hover:border-border bg-background"
             >
               <div className="w-2 h-2 rounded-full animate-pulse" style={healthDotStyle} />
               <span className="text-xs font-semibold text-foreground">Health: {healthScore}%</span>
@@ -146,7 +136,7 @@ export function ModalHeader({ issues, tone, onToneChange, isLoading }: ModalHead
             <Button
               variant="outline"
               size="sm"
-              className="h-8 px-3 rounded-full border-border/60 hover:border-border bg-background"
+              className="h-8 px-3 rounded-xl border-border/60 hover:border-border bg-background"
             >
               <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Tone</span>
               <span className="text-xs text-foreground font-semibold">{currentToneLabel}</span>
