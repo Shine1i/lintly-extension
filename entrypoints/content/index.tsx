@@ -7,6 +7,8 @@ import "./styles.css";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
+  allFrames: true,
+  matchAboutBlank: true,
   cssInjectionMode: "ui",
 
   async main(ctx) {
