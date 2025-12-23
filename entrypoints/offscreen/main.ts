@@ -15,10 +15,10 @@ import {
 } from "@/lib/prompts";
 import { assignIssueOffsetsFromCorrection } from "@/lib/issueOffsets";
 
-// const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const API_URL = "https://openai.studyon.app/api/chat/completions";
-// const MODEL = "moogin/lintly-lfm2-700m-dpo-new";
-const MODEL = "google/gemini-2.5-flash-lite";
+const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
+const MODEL = "moogin/typix-sft";
+// const API_URL = "https://openai.studyon.app/api/chat/completions";
+// const MODEL = "google/gemini-2.5-flash-lite";
 
 const IssueSchema = z.object({
   type: z.enum([
@@ -63,8 +63,8 @@ async function callAPI(
       ],
       temperature: 0,
       // temperature: 0.3,
-      // min_p: 0.15,
-      // repetition_penalty: 1.05,
+      min_p: 0.15,
+      repetition_penalty: 1.05,
     }),
   });
 

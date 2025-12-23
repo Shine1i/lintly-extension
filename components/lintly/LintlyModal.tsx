@@ -186,9 +186,11 @@ export function LintlyModal({
     e.stopPropagation();
   };
 
-  const handleSubmit = () => {
-    if (customInstruction.trim()) {
-      onCustomSubmit(customInstruction);
+  const handleSubmit = (processedInstruction?: string) => {
+    // Use processed instruction (from slash command) or raw custom instruction
+    const instruction = processedInstruction ?? customInstruction;
+    if (instruction.trim()) {
+      onCustomSubmit(instruction);
     }
   };
 
