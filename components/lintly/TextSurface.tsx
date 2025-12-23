@@ -1,11 +1,19 @@
 import { useMemo, useState, useEffect } from "react";
 import type { Issue, Severity } from "@/lib/types";
 import { IssuePopover } from "./IssuePopover";
+import {
+  applyIssuesToSentence,
+  buildIssueSentenceContexts,
+  groupIssueContextsBySentence,
+  type IssueSentenceContext,
+  type SentenceRange,
+} from "@/lib/sentences";
 
 interface TextSurfaceProps {
   text: string;
   issues: Issue[];
   onApplyFix: (issue: Issue) => void;
+  onApplyWordFix?: (issue: Issue) => void;
   isLoading?: boolean;
 }
 
@@ -14,6 +22,15 @@ interface TextSegment {
   issue?: Issue;
   start: number;
   end: number;
+}
+
+interface SentenceBlock {
+  key: string;
+  sentenceIndex: number;
+  leadingText: string;
+  trailingText: string;
+  segments: TextSegment[];
+  coreText: string;
 }
 
 function getHighlightClass(severity: Severity): string {
@@ -29,71 +46,82 @@ function getHighlightClass(severity: Severity): string {
   }
 }
 
-function parseTextWithIssues(text: string, issues: Issue[]): TextSegment[] {
-  if (!text || issues.length === 0) {
-    return [{ text, start: 0, end: text.length }];
-  }
+function buildSentenceBlocks(
+  text: string,
+  sentenceRanges: SentenceRange[],
+  issueContexts: Map<Issue, IssueSentenceContext>
+): SentenceBlock[] {
+  if (!text) return [];
 
-  // Find all issue positions in text
-  const issuePositions: { start: number; end: number; issue: Issue }[] = [];
-
-  for (const issue of issues) {
-    const index = text.indexOf(issue.original);
-    if (index !== -1) {
-      issuePositions.push({
-        start: index,
-        end: index + issue.original.length,
-        issue,
-      });
+  const contextsBySentence = new Map<number, IssueSentenceContext[]>();
+  for (const context of issueContexts.values()) {
+    if (!contextsBySentence.has(context.sentenceIndex)) {
+      contextsBySentence.set(context.sentenceIndex, []);
     }
+    contextsBySentence.get(context.sentenceIndex)!.push(context);
   }
 
-  // Sort by position
-  issuePositions.sort((a, b) => a.start - b.start);
+  const blocks: SentenceBlock[] = [];
 
-  // Build segments
-  const segments: TextSegment[] = [];
-  let currentIndex = 0;
+  for (let i = 0; i < sentenceRanges.length; i++) {
+    const range = sentenceRanges[i];
+    const contexts = contextsBySentence.get(i) || [];
+    contexts.sort((a, b) => a.issueStart - b.issueStart);
 
-  for (const pos of issuePositions) {
-    // Skip overlapping issues
-    if (pos.start < currentIndex) continue;
+    const segments: TextSegment[] = [];
+    let cursor = range.coreStart;
 
-    // Add text before issue
-    if (pos.start > currentIndex) {
+    for (const context of contexts) {
+      if (context.issueStart < range.coreStart || context.issueEnd > range.coreEnd) {
+        continue;
+      }
+      if (context.issueStart > cursor) {
+        segments.push({
+          text: text.slice(cursor, context.issueStart),
+          start: cursor,
+          end: context.issueStart,
+        });
+      }
       segments.push({
-        text: text.slice(currentIndex, pos.start),
-        start: currentIndex,
-        end: pos.start,
+        text: text.slice(context.issueStart, context.issueEnd),
+        issue: context.issue,
+        start: context.issueStart,
+        end: context.issueEnd,
+      });
+      cursor = context.issueEnd;
+    }
+
+    if (cursor < range.coreEnd) {
+      segments.push({
+        text: text.slice(cursor, range.coreEnd),
+        start: cursor,
+        end: range.coreEnd,
       });
     }
 
-    // Add issue segment
-    segments.push({
-      text: text.slice(pos.start, pos.end),
-      issue: pos.issue,
-      start: pos.start,
-      end: pos.end,
-    });
-
-    currentIndex = pos.end;
-  }
-
-  // Add remaining text
-  if (currentIndex < text.length) {
-    segments.push({
-      text: text.slice(currentIndex),
-      start: currentIndex,
-      end: text.length,
+    blocks.push({
+      key: `${range.start}-${range.end}-${i}`,
+      sentenceIndex: i,
+      leadingText: text.slice(range.start, range.coreStart),
+      trailingText: text.slice(range.coreEnd, range.end),
+      segments,
+      coreText: text.slice(range.coreStart, range.coreEnd),
     });
   }
 
-  return segments;
+  return blocks;
 }
 
-export function TextSurface({ text, issues, onApplyFix, isLoading }: TextSurfaceProps) {
+export function TextSurface({
+  text,
+  issues,
+  onApplyFix,
+  onApplyWordFix,
+  isLoading,
+}: TextSurfaceProps) {
   const [showShimmer, setShowShimmer] = useState(false);
   const [isFadingOut, setIsFadingOut] = useState(false);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (isLoading) {
@@ -112,13 +140,31 @@ export function TextSurface({ text, issues, onApplyFix, isLoading }: TextSurface
     }
   }, [isLoading, showShimmer]);
 
-  const segments = useMemo(() => {
-    console.log("[Lintly TextSurface] Parsing text:", text.substring(0, 50) + "...");
-    console.log("[Lintly TextSurface] Issues:", issues);
-    const result = parseTextWithIssues(text, issues);
-    console.log("[Lintly TextSurface] Segments:", result);
-    return result;
+  useEffect(() => {
+    setActiveSentenceIndex(null);
   }, [text, issues]);
+
+  const { sentenceRanges, issueContexts } = useMemo(
+    () => buildIssueSentenceContexts(text, issues),
+    [text, issues]
+  );
+  const contextsBySentence = useMemo(
+    () => groupIssueContextsBySentence(issueContexts),
+    [issueContexts]
+  );
+  const correctedSentenceByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const [sentenceIndex, contexts] of contextsBySentence.entries()) {
+      if (contexts.length === 0) continue;
+      const sentenceText = contexts[0].sentence.coreText;
+      map.set(sentenceIndex, applyIssuesToSentence(sentenceText, contexts));
+    }
+    return map;
+  }, [contextsBySentence]);
+  const sentenceBlocks = useMemo(
+    () => buildSentenceBlocks(text, sentenceRanges, issueContexts),
+    [text, sentenceRanges, issueContexts]
+  );
 
   return (
     <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-5 relative overflow-x-hidden">
@@ -132,19 +178,54 @@ export function TextSurface({ text, issues, onApplyFix, isLoading }: TextSurface
       <div className="max-w-2xl mx-auto">
         {/* Text Content */}
         <p className="text-[15px] text-foreground leading-[1.85] font-normal">
-          {segments.map((segment, index) => {
-            if (segment.issue) {
-              return (
-                <IssuePopover
-                  key={index}
-                  issue={segment.issue}
-                  text={segment.text}
-                  highlightClass={getHighlightClass(segment.issue.severity)}
-                  onApplyFix={() => onApplyFix(segment.issue!)}
-                />
-              );
-            }
-            return <span key={index}>{segment.text}</span>;
+          {sentenceBlocks.map((block) => {
+            const isActive = activeSentenceIndex === block.sentenceIndex;
+            const sentenceClass = isActive ? "lintly-sentence-highlight" : "";
+
+            return (
+              <span key={block.key}>
+                {block.leadingText && <span>{block.leadingText}</span>}
+                <span className={sentenceClass}>
+                  {block.segments.length > 0
+                    ? block.segments.map((segment, index) => {
+                        if (segment.issue) {
+                          const context = issueContexts.get(segment.issue);
+                          const sentenceText = context?.sentence.coreText;
+                          const correctedSentence =
+                            context && sentenceText
+                              ? correctedSentenceByIndex.get(context.sentenceIndex)
+                              : undefined;
+
+                          return (
+                              <IssuePopover
+                                key={`${block.key}-${index}`}
+                                issue={segment.issue}
+                                text={segment.text}
+                                highlightClass={getHighlightClass(segment.issue.severity)}
+                                onApplyFix={() => onApplyFix(segment.issue!)}
+                                onApplyWordFix={
+                                  onApplyWordFix
+                                    ? () => onApplyWordFix(segment.issue!)
+                                    : undefined
+                                }
+                                sentenceText={sentenceText}
+                                correctedSentence={correctedSentence}
+                                onHoverChange={(isHovering) => {
+                                  if (!context) return;
+                                setActiveSentenceIndex(
+                                  isHovering ? context.sentenceIndex : null
+                                );
+                              }}
+                            />
+                          );
+                        }
+                        return <span key={`${block.key}-${index}`}>{segment.text}</span>;
+                      })
+                    : block.coreText}
+                </span>
+                {block.trailingText && <span>{block.trailingText}</span>}
+              </span>
+            );
           })}
         </p>
       </div>

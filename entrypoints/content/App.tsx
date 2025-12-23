@@ -1,14 +1,17 @@
-import { useReducer, useEffect, useCallback } from "react";
+import { useReducer, useEffect, useCallback, useMemo, useRef } from "react";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
+import { InlineHighlightManager } from "@/components/lintly/InlineHighlightManager";
+import { getSelectionRect, type SelectionRect } from "@/lib/textPositioning";
 import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
-
-interface SelectionRect {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-}
+import {
+  applyIssuesToSentence,
+  buildIssueSentenceContexts,
+  findSentenceRangeAt,
+  getSentenceRanges,
+  groupIssueContextsBySentence,
+} from "@/lib/sentences";
+import { mergeIssuesForSentence } from "@/lib/issueMerge";
 
 interface State {
   isVisible: boolean;
@@ -106,104 +109,6 @@ function reducer(state: State, action: AppAction): State {
   }
 }
 
-function getTextareaSelectionRect(element: HTMLTextAreaElement | HTMLInputElement): SelectionRect | null {
-  const start = element.selectionStart ?? 0;
-  const end = element.selectionEnd ?? 0;
-  if (start === end) return null;
-
-  // Create a mirror div to measure text position
-  const mirror = document.createElement("div");
-  const style = window.getComputedStyle(element);
-
-  // Copy textarea styles to mirror
-  mirror.style.cssText = `
-    position: absolute;
-    visibility: hidden;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font: ${style.font};
-    padding: ${style.padding};
-    border: ${style.border};
-    box-sizing: ${style.boxSizing};
-    width: ${style.width};
-    line-height: ${style.lineHeight};
-    letter-spacing: ${style.letterSpacing};
-  `;
-
-  // Get element position
-  const elementRect = element.getBoundingClientRect();
-  mirror.style.top = `${elementRect.top + window.scrollY}px`;
-  mirror.style.left = `${elementRect.left + window.scrollX}px`;
-
-  const value = element.value;
-  const before = value.slice(0, start);
-  const selected = value.slice(start, end);
-
-  // Build mirror content with marker span
-  mirror.innerHTML =
-    before.replace(/\n/g, "<br>").replace(/ /g, "&nbsp;") +
-    '<span id="lintly-sel-marker">' +
-    selected.replace(/\n/g, "<br>").replace(/ /g, "&nbsp;") +
-    "</span>";
-
-  document.body.appendChild(mirror);
-
-  const marker = mirror.querySelector("#lintly-sel-marker");
-  if (!marker) {
-    document.body.removeChild(mirror);
-    return null;
-  }
-
-  const markerRect = marker.getBoundingClientRect();
-
-  // Adjust for scroll position within textarea
-  const scrollTop = element.scrollTop;
-  const scrollLeft = element.scrollLeft;
-
-  const rect: SelectionRect = {
-    top: elementRect.top + (markerRect.top - mirror.getBoundingClientRect().top) - scrollTop,
-    bottom: elementRect.top + (markerRect.bottom - mirror.getBoundingClientRect().top) - scrollTop,
-    left: elementRect.left + (markerRect.left - mirror.getBoundingClientRect().left) - scrollLeft,
-    right: elementRect.left + (markerRect.right - mirror.getBoundingClientRect().left) - scrollLeft,
-  };
-
-  document.body.removeChild(mirror);
-  return rect;
-}
-
-function getSelectionRect(activeElement?: Element | null): SelectionRect | null {
-  // Check if selection is in textarea/input
-  if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
-    const rect = getTextareaSelectionRect(activeElement);
-    if (rect) {
-      console.log("[Lintly] Using textarea selection rect:", rect);
-      return rect;
-    }
-  }
-
-  // Regular DOM selection
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return null;
-  }
-
-  const range = selection.getRangeAt(0);
-  const rects = range.getClientRects();
-
-  if (rects.length > 0) {
-    const r = rects[0];
-    console.log("[Lintly] Using DOM selection rect");
-    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
-  }
-
-  const r = range.getBoundingClientRect();
-  if (r.width > 0) {
-    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
-  }
-
-  return null;
-}
-
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const modalWidth = 560;
   const modalHeight = 380;
@@ -267,6 +172,7 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const sentenceAnalyzeIdRef = useRef(0);
 
   const processText = useCallback(
     async (actionOverride?: Action, customInstruction?: string) => {
@@ -312,25 +218,191 @@ export default function App() {
     dispatch({ type: "RESET" });
   }, []);
 
-  const handleApplyFix = useCallback(
-    (issue: Issue) => {
-      // Apply the fix to the SOURCE text (which has the errors)
-      const newText = state.sourceText.replace(issue.original, issue.suggestion);
-      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+  const reanalyzeSentenceRange = useCallback(
+    async (
+      newText: string,
+      sentenceRange: { coreStart: number; coreEnd: number; coreText: string },
+      baseIssues: Issue[]
+    ) => {
+      const currentId = ++sentenceAnalyzeIdRef.current;
+      const sentenceText = sentenceRange.coreText;
+      if (!sentenceText.trim()) {
+        return;
+      }
 
-      // Update result - remove the fixed issue from the list
-      if (state.result && typeof state.result === "object") {
-        const updatedIssues = state.result.issues.filter((i) => i.original !== issue.original);
+      try {
+        const response: ProcessResponse = await browser.runtime.sendMessage({
+          type: "PROCESS_TEXT",
+          action: "ANALYZE",
+          text: sentenceText,
+          options: {
+            tone: state.tone,
+          },
+        });
+
+        if (currentId !== sentenceAnalyzeIdRef.current) {
+          return;
+        }
+
+        if (response.success && response.result) {
+          const result = response.result as AnalyzeResult;
+          const mergedIssues = mergeIssuesForSentence(
+            newText,
+            sentenceRange,
+            baseIssues,
+            result.issues || []
+          );
+          dispatch({
+            type: "SET_RESULT",
+            result: {
+              corrected_text: newText,
+              issues: mergedIssues,
+            },
+          });
+        }
+      } catch (err) {
+        console.log("[Lintly] Sentence re-analysis failed:", err);
+      }
+    },
+    [state.tone]
+  );
+
+  const handleApplyFix = useCallback(
+    async (issue: Issue) => {
+      if (!state.result || typeof state.result !== "object") {
+        return;
+      }
+
+      const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
+      const contextsBySentence = groupIssueContextsBySentence(issueContexts);
+      const context = issueContexts.get(issue);
+
+      if (!context) {
+        const fallbackText = state.sourceText.replace(issue.original, issue.suggestion);
+        dispatch({ type: "SET_SOURCE_TEXT", text: fallbackText });
         dispatch({
           type: "SET_RESULT",
           result: {
-            corrected_text: state.result.corrected_text,
-            issues: updatedIssues,
+            corrected_text: fallbackText,
+            issues: state.result.issues.filter((i) => i !== issue),
           },
         });
+        return;
       }
+
+      const sentenceContexts = contextsBySentence.get(context.sentenceIndex) || [];
+      const correctedSentence = applyIssuesToSentence(
+        context.sentence.coreText,
+        sentenceContexts.length > 0 ? sentenceContexts : [context]
+      );
+      const newText =
+        state.sourceText.slice(0, context.sentence.coreStart) +
+        correctedSentence +
+        state.sourceText.slice(context.sentence.coreEnd);
+
+      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+
+      const updatedSentenceRange =
+        findSentenceRangeAt(getSentenceRanges(newText), context.sentence.coreStart) ??
+        context.sentence;
+      const sentenceIssueSet = new Set(sentenceContexts.map((ctx) => ctx.issue));
+      const baseIssues =
+        sentenceIssueSet.size > 0
+          ? state.result.issues.filter((existing) => !sentenceIssueSet.has(existing))
+          : state.result.issues.filter((existing) => existing !== issue);
+      const clearedIssues = mergeIssuesForSentence(
+        newText,
+        updatedSentenceRange,
+        baseIssues,
+        []
+      );
+
+      dispatch({
+        type: "SET_RESULT",
+        result: {
+          corrected_text: newText,
+          issues: clearedIssues,
+        },
+      });
+      await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
-    [state.result, state.sourceText]
+    [state.result, state.sourceText, reanalyzeSentenceRange]
+  );
+
+  const handleApplyWordFix = useCallback(
+    async (issue: Issue) => {
+      if (!state.result || typeof state.result !== "object") {
+        return;
+      }
+
+      const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
+      const contextsBySentence = groupIssueContextsBySentence(issueContexts);
+      const context = issueContexts.get(issue);
+      const sentenceContexts = context
+        ? contextsBySentence.get(context.sentenceIndex) || []
+        : [];
+
+      let newText = state.sourceText;
+      let sentenceAnchor = -1;
+
+      if (context) {
+        newText =
+          state.sourceText.slice(0, context.issueStart) +
+          issue.suggestion +
+          state.sourceText.slice(context.issueEnd);
+        sentenceAnchor = context.sentence.coreStart;
+      } else {
+        const index = state.sourceText.indexOf(issue.original);
+        if (index === -1) {
+          return;
+        }
+        newText =
+          state.sourceText.slice(0, index) +
+          issue.suggestion +
+          state.sourceText.slice(index + issue.original.length);
+        sentenceAnchor = index;
+      }
+
+      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+
+      const updatedSentenceRange =
+        findSentenceRangeAt(getSentenceRanges(newText), sentenceAnchor) ??
+        context?.sentence;
+
+      if (!updatedSentenceRange) {
+        dispatch({
+          type: "SET_RESULT",
+          result: {
+            corrected_text: newText,
+            issues: state.result.issues.filter((i) => i !== issue),
+          },
+        });
+        return;
+      }
+
+      const sentenceIssueSet = new Set(sentenceContexts.map((ctx) => ctx.issue));
+      const baseIssues =
+        sentenceIssueSet.size > 0
+          ? state.result.issues.filter((existing) => !sentenceIssueSet.has(existing))
+          : state.result.issues.filter((existing) => existing !== issue);
+      const clearedIssues = mergeIssuesForSentence(
+        newText,
+        updatedSentenceRange,
+        baseIssues,
+        []
+      );
+
+      dispatch({
+        type: "SET_RESULT",
+        result: {
+          corrected_text: newText,
+          issues: clearedIssues,
+        },
+      });
+
+      await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
+    },
+    [state.result, state.sourceText, reanalyzeSentenceRange]
   );
 
   const handleApplyAllFixes = useCallback(() => {
@@ -349,7 +421,7 @@ export default function App() {
     dispatch({
       type: "SET_RESULT",
       result: {
-        corrected_text: state.result.corrected_text,
+        corrected_text: newText,
         issues: [],
       },
     });
@@ -487,8 +559,17 @@ export default function App() {
     };
   }, [state.isVisible, state.toolbarPosition]);
 
+  // Disable inline highlights when modal or toolbar is visible
+  const inlineHighlightsEnabled = useMemo(
+    () => !state.isVisible && !state.toolbarPosition,
+    [state.isVisible, state.toolbarPosition]
+  );
+
   return (
     <>
+      {/* Inline highlighting for real-time analysis while typing */}
+      <InlineHighlightManager isEnabled={inlineHighlightsEnabled} />
+
       {state.toolbarPosition && (
         <SelectionToolbar position={state.toolbarPosition} onOpen={handleToolbarOpen} />
       )}
@@ -503,6 +584,7 @@ export default function App() {
         isLoading={state.isLoading}
         result={state.result}
         onApplyFix={handleApplyFix}
+        onApplyWordFix={handleApplyWordFix}
         onApplyAllFixes={handleApplyAllFixes}
         onCopy={handleCopy}
         onReset={handleReset}

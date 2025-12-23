@@ -16,6 +16,7 @@ interface LintlyModalProps {
   isLoading: boolean;
   result: string | AnalyzeResult | null;
   onApplyFix: (issue: Issue) => void;
+  onApplyWordFix?: (issue: Issue) => void;
   onApplyAllFixes: () => void;
   onCopy: () => void;
   onReset: () => void;
@@ -32,6 +33,7 @@ export function LintlyModal({
   isLoading,
   result,
   onApplyFix,
+  onApplyWordFix,
   onApplyAllFixes,
   onCopy,
   onReset,
@@ -157,7 +159,13 @@ export function LintlyModal({
           />
 
           {/* Text Surface */}
-          <TextSurface text={displayText} issues={issues} onApplyFix={onApplyFix} isLoading={isLoading} />
+          <TextSurface
+            text={displayText}
+            issues={issues}
+            onApplyFix={onApplyFix}
+            onApplyWordFix={onApplyWordFix}
+            isLoading={isLoading}
+          />
 
           {/* Issues Action Bar - Only show when there are issues */}
           {issues.length > 0 && (

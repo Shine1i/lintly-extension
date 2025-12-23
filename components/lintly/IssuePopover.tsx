@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Zap, ArrowRight } from "lucide-react";
 import type { Issue, Severity } from "@/lib/types";
 import {
@@ -6,12 +6,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { SentenceDiff } from "./SentenceDiff";
 
 interface IssuePopoverProps {
   issue: Issue;
   text: string;
   highlightClass: string;
   onApplyFix: () => void;
+  onApplyWordFix?: () => void;
+  sentenceText?: string;
+  correctedSentence?: string;
+  onHoverChange?: (isHovering: boolean) => void;
 }
 
 function getSeverityStyles(severity: Severity): {
@@ -64,16 +69,90 @@ export function IssuePopover({
   text,
   highlightClass,
   onApplyFix,
+  onApplyWordFix,
+  sentenceText,
+  correctedSentence,
+  onHoverChange,
 }: IssuePopoverProps) {
   const [open, setOpen] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const styles = getSeverityStyles(issue.severity);
 
+  const clearTimeouts = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const closePopover = useCallback(() => {
+    setOpen(false);
+    onHoverChange?.(false);
+  }, [onHoverChange]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeouts();
+    };
+  }, [clearTimeouts]);
+
+  const handleMouseEnter = useCallback(() => {
+    clearTimeouts();
+    onHoverChange?.(true);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setOpen(true);
+    }, 150);
+  }, [clearTimeouts, onHoverChange]);
+
+  const handleMouseLeave = useCallback(() => {
+    clearTimeouts();
+    leaveTimeoutRef.current = setTimeout(() => {
+      closePopover();
+    }, 120);
+  }, [clearTimeouts, closePopover]);
+
+  const handlePopoverMouseEnter = useCallback(() => {
+    clearTimeouts();
+    onHoverChange?.(true);
+  }, [clearTimeouts, onHoverChange]);
+
+  const handlePopoverMouseLeave = useCallback(() => {
+    clearTimeouts();
+    leaveTimeoutRef.current = setTimeout(() => {
+      closePopover();
+    }, 100);
+  }, [clearTimeouts, closePopover]);
+
+  const handleApplySentenceFix = useCallback(() => {
+    onApplyFix();
+    closePopover();
+  }, [onApplyFix, closePopover]);
+
+  const handleApplyWordFix = useCallback(() => {
+    if (!onApplyWordFix) return;
+    onApplyWordFix();
+    closePopover();
+  }, [onApplyWordFix, closePopover]);
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        onHoverChange?.(nextOpen);
+      }}
+    >
       <PopoverTrigger asChild>
         <span
           className={`${highlightClass} rounded-md cursor-pointer mx-0.5`}
           onClick={(e) => e.stopPropagation()}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {text}
         </span>
@@ -82,13 +161,15 @@ export function IssuePopover({
         className="w-[320px] p-0 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/5"
         sideOffset={12}
         align="center"
+        onMouseEnter={handlePopoverMouseEnter}
+        onMouseLeave={handlePopoverMouseLeave}
         onInteractOutside={(e) => {
           // In Shadow DOM, treat clicks from same shadow root as "inside"
           const target = e.target as Node;
           const root = target.getRootNode?.() as ShadowRoot | Document;
           if (root instanceof ShadowRoot) {
             e.preventDefault();
-            setOpen(false);
+            closePopover();
           }
         }}
       >
@@ -106,23 +187,47 @@ export function IssuePopover({
 
         {/* Body */}
         <div className="p-4">
-          {/* Original → Suggestion (clickable) */}
-          <div
-            className="flex items-center gap-3 text-sm mb-3 cursor-pointer hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              onApplyFix();
-              setOpen(false);
-            }}
-          >
-            <span className="line-through text-muted-foreground decoration-muted-foreground/50 decoration-2">
-              {issue.original}
-            </span>
-            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="font-bold px-2 py-0.5 rounded-md">
-              {issue.suggestion}
-            </span>
-          </div>
+          {sentenceText && correctedSentence && sentenceText !== correctedSentence && (
+            <div className="mb-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                Sentence update
+              </p>
+              <div
+                className="lintly-sentence-diff-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleApplySentenceFix();
+                }}
+              >
+                <SentenceDiff before={sentenceText} after={correctedSentence} />
+              </div>
+            </div>
+          )}
+
+          {onApplyWordFix && (
+            <div className="pt-2 border-t border-border/50">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                {sentenceText && correctedSentence && sentenceText !== correctedSentence
+                  ? "Word only"
+                  : "Replace word"}
+              </p>
+              <div
+                className="flex items-center gap-3 text-sm cursor-pointer hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleApplyWordFix();
+                }}
+              >
+                <span className="line-through text-muted-foreground decoration-muted-foreground/50 decoration-2">
+                  {issue.original}
+                </span>
+                <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="font-bold px-2 py-0.5 rounded-md">
+                  {issue.suggestion}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Explanation (if available) */}
           {issue.explanation && (
