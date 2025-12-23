@@ -13,6 +13,7 @@ import {
   CUSTOM_SYSTEM,
   TONE_PROMPTS,
 } from "@/lib/prompts";
+import { assignIssueOffsetsFromCorrection } from "@/lib/issueOffsets";
 
 // const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
 const API_URL = "https://openai.studyon.app/api/chat/completions";
@@ -114,8 +115,14 @@ async function processText(
 
     if (parsed.success) {
       console.log("[Lintly API] Parsed ANALYZE result:", parsed.data);
-
-      return parsed.data;
+      return {
+        ...parsed.data,
+        issues: assignIssueOffsetsFromCorrection(
+          text,
+          parsed.data.corrected_text,
+          parsed.data.issues || []
+        ),
+      };
     }
     console.log("[Lintly API] Failed to parse with schema:", parsed.error);
     return { corrected_text: response, issues: [] };
