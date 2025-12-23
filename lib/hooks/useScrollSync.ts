@@ -171,6 +171,10 @@ export function useScrollSync(
 
     targetElement.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("scroll", handleScroll, { passive: true });
+    document.addEventListener("scroll", handleScroll, {
+      passive: true,
+      capture: true,
+    });
     window.addEventListener("resize", handleScroll, { passive: true });
     if (window.visualViewport) {
       window.visualViewport.addEventListener("scroll", handleViewportScroll, {
@@ -319,6 +323,7 @@ export function useScrollSync(
 
       targetElement.removeEventListener("scroll", handleScroll);
       window.removeEventListener("scroll", handleScroll);
+      document.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleScroll);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener("scroll", handleViewportScroll);

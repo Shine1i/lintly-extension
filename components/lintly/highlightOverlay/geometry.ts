@@ -59,10 +59,12 @@ export function getOverflowAncestors(element: HTMLElement): HTMLElement[] {
     const shouldClip =
       overflowY === "auto" ||
       overflowY === "scroll" ||
+      overflowY === "overlay" ||
       overflowY === "hidden" ||
       overflowY === "clip" ||
       overflowX === "auto" ||
       overflowX === "scroll" ||
+      overflowX === "overlay" ||
       overflowX === "hidden" ||
       overflowX === "clip";
 

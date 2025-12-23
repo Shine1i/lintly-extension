@@ -119,7 +119,9 @@ export function InlineHighlightManager({
       }
 
       skipNextAnalyzeRef.current = true;
-      await reanalyzeSentence(fullText, sentenceRange);
+      await reanalyzeSentence(fullText, sentenceRange, {
+        skipIssueClear: Boolean(sentenceIssues && sentenceIssues.length > 0),
+      });
     },
     [activeElement, removeIssue, reanalyzeSentence]
   );

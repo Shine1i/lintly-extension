@@ -45,13 +45,15 @@ export function findScrollAncestors(element: HTMLElement): HTMLElement[] {
     const style = getComputedStyle(parent);
     const overflowY = style.overflowY;
     const overflowX = style.overflowX;
-
-    if (
+    const isScrollable =
       overflowY === "auto" ||
       overflowY === "scroll" ||
+      overflowY === "overlay" ||
       overflowX === "auto" ||
-      overflowX === "scroll"
-    ) {
+      overflowX === "scroll" ||
+      overflowX === "overlay";
+
+    if (isScrollable) {
       ancestors.push(parent);
     }
 

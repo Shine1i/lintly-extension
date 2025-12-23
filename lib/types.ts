@@ -10,6 +10,7 @@ export interface Issue {
   original: string;
   suggestion: string;
   explanation: string;
+  confidence?: number;
   start?: number;
   end?: number;
 }

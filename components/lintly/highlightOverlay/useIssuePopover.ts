@@ -104,7 +104,15 @@ export function useIssuePopover({
           const right = rect.left + rect.width;
           const bottom = rect.top + rect.height;
           if (x >= rect.left && x <= right && y >= rect.top && y <= bottom) {
-            return { issueId, rect: DOMRect.fromRect(rect) };
+            return {
+              issueId,
+              rect: DOMRect.fromRect({
+                x: rect.left,
+                y: rect.top,
+                width: rect.width,
+                height: rect.height,
+              }),
+            };
           }
         }
       }

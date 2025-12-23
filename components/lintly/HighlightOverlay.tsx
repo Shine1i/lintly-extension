@@ -74,7 +74,15 @@ export function HighlightOverlay({
   changePosition = 0,
 }: HighlightOverlayProps) {
   const { scrollPosition, elementPosition, layoutVersion } = useScrollSync(targetElement);
-  const resolvedText = elementText ?? getElementText(targetElement);
+  const resolvedText = useMemo(() => {
+    if (!targetElement) {
+      return elementText ?? "";
+    }
+    if (isTyping && elementText !== undefined) {
+      return elementText;
+    }
+    return getElementText(targetElement);
+  }, [targetElement, elementText, isTyping, issues]);
   const { issueIdByIssue, issueById } = useIssueIdMap(issues);
 
   const { issueContexts } = useMemo(

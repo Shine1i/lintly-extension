@@ -11,6 +11,7 @@ issues: Array of identified issues, where each issue contains:
   start: 0-based index of original in the input text
   end: exclusive index (start + original.length)
   suggestion: The corrected text to replace original
+  confidence: A number between 0 and 1 estimating how likely the user will accept this suggestion
   explanation: Brief explanation of why this change improves the text
 
 Severity guidelines:

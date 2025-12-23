@@ -14,6 +14,10 @@ interface UseInlineAnalysisOptions {
   minTextLength?: number;
 }
 
+interface ReanalyzeSentenceOptions {
+  skipIssueClear?: boolean;
+}
+
 interface UseInlineAnalysisReturn {
   state: InlineAnalysisState;
   analyze: (text: string) => Promise<void>;
@@ -21,7 +25,11 @@ interface UseInlineAnalysisReturn {
   /** Keep UI responsive by removing a single issue without a round-trip. */
   removeIssue: (issue: Issue) => void;
   /** Re-scan only the touched sentence to avoid full-document latency. */
-  reanalyzeSentence: (fullText: string, sentenceRange: SentenceRange) => Promise<void>;
+  reanalyzeSentence: (
+    fullText: string,
+    sentenceRange: SentenceRange,
+    options?: ReanalyzeSentenceOptions
+  ) => Promise<void>;
 }
 
 export function useInlineAnalysis(
@@ -149,7 +157,11 @@ export function useInlineAnalysis(
   }, []);
 
   const reanalyzeSentence = useCallback(
-    async (fullText: string, sentenceRange: SentenceRange) => {
+    async (
+      fullText: string,
+      sentenceRange: SentenceRange,
+      options?: ReanalyzeSentenceOptions
+    ) => {
       const sentenceText = fullText.slice(sentenceRange.coreStart, sentenceRange.coreEnd);
       const currentId = ++sentenceAnalyzeIdRef.current;
 
@@ -157,7 +169,9 @@ export function useInlineAnalysis(
         ...prev,
         isAnalyzing: true,
         error: null,
-        issues: mergeIssuesForSentence(fullText, sentenceRange, prev.issues, []),
+        issues: options?.skipIssueClear
+          ? prev.issues
+          : mergeIssuesForSentence(fullText, sentenceRange, prev.issues, []),
         lastAnalyzedText: fullText,
       }));
 

@@ -15,6 +15,8 @@ import {
   type SentenceRange,
 } from "@/lib/sentences";
 import { mergeIssuesForSentence } from "@/lib/issueMerge";
+import { applyBulkIssues } from "@/lib/bulkApply";
+import { trackEvent } from "@/lib/analytics";
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const modalWidth = 560;
@@ -72,24 +74,31 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
 export default function App() {
   const [state, dispatch] = useAtom(appStateAtom);
   const sentenceAnalyzeIdRef = useRef(0);
+  const processIdRef = useRef(0);
 
   const processText = useCallback(
-    async (actionOverride?: Action, customInstruction?: string) => {
+    async (actionOverride?: Action, customInstruction?: string, textOverride?: string) => {
       const actionToUse = actionOverride || state.action;
-      if (!state.sourceText.trim()) return;
+      const textToUse = textOverride ?? state.sourceText;
+      if (!textToUse.trim()) return;
 
       dispatch({ type: "SET_LOADING", loading: true });
+      const currentId = ++processIdRef.current;
 
       try {
         const response: ProcessResponse = await browser.runtime.sendMessage({
           type: "PROCESS_TEXT",
           action: customInstruction ? "CUSTOM" : actionToUse,
-          text: state.sourceText,
+          text: textToUse,
           options: {
             tone: state.tone,
             customInstruction: customInstruction || undefined,
           },
         });
+
+        if (currentId !== processIdRef.current) {
+          return;
+        }
 
         if (response.success && response.result) {
           dispatch({ type: "SET_RESULT", result: response.result });
@@ -97,10 +106,13 @@ export default function App() {
           dispatch({ type: "SET_ERROR", error: response.error || "Unknown error" });
         }
       } catch (err) {
+        if (currentId !== processIdRef.current) {
+          return;
+        }
         dispatch({ type: "SET_ERROR", error: String(err) });
       }
     },
-    [state.sourceText, state.action, state.tone]
+    [dispatch, state.sourceText, state.action, state.tone]
   );
 
   const handleCopy = useCallback(() => {
@@ -114,8 +126,9 @@ export default function App() {
   }, [state.result, state.sourceText]);
 
   const handleReset = useCallback(() => {
+    processIdRef.current++;
     dispatch({ type: "RESET" });
-  }, []);
+  }, [dispatch]);
 
   const reanalyzeSentenceRange = useCallback(
     async (
@@ -163,7 +176,7 @@ export default function App() {
         console.log("[Lintly] Sentence re-analysis failed:", err);
       }
     },
-    [state.tone]
+    [dispatch, state.tone]
   );
 
   const handleApplyFix = useCallback(
@@ -172,6 +185,7 @@ export default function App() {
         return;
       }
 
+      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
       const contextsBySentence = groupIssueContextsBySentence(issueContexts);
       const context = issueContexts.get(issue);
@@ -225,7 +239,7 @@ export default function App() {
       });
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
-    [state.result, state.sourceText, reanalyzeSentenceRange]
+    [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
   );
 
   const handleApplyWordFix = useCallback(
@@ -234,6 +248,7 @@ export default function App() {
         return;
       }
 
+      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
       const contextsBySentence = groupIssueContextsBySentence(issueContexts);
       const context = issueContexts.get(issue);
@@ -301,34 +316,93 @@ export default function App() {
 
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
-    [state.result, state.sourceText, reanalyzeSentenceRange]
+    [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
   );
 
-  const handleApplyAllFixes = useCallback(() => {
-    if (!state.result || typeof state.result !== "object" || state.result.issues.length === 0) {
+  const handleApplyAllFixes = useCallback(
+    async (issuesToApply: Issue[]) => {
+      if (!state.result || typeof state.result !== "object") {
+        return;
+      }
+
+      const targetIssues = issuesToApply;
+      if (targetIssues.length === 0) {
+        return;
+      }
+
+      const previousText = state.sourceText;
+      const previousResult = state.result;
+      const { text: newText, appliedIssues, skippedIssues } = applyBulkIssues(
+        state.sourceText,
+        targetIssues
+      );
+
+      trackEvent("bulk_accept", {
+        requestedCount: targetIssues.length,
+        appliedCount: appliedIssues.length,
+        skippedCount: skippedIssues.length,
+        totalIssues: state.result.issues.length,
+      });
+
+      if (appliedIssues.length === 0) {
+        return;
+      }
+
+      dispatch({
+        type: "SET_BULK_UNDO",
+        bulkUndo: {
+          sourceText: previousText,
+          result: previousResult,
+          appliedCount: appliedIssues.length,
+          skippedCount: skippedIssues.length,
+          requestedCount: targetIssues.length,
+          timestamp: Date.now(),
+        },
+      });
+
+      const appliedIssueSet = new Set(appliedIssues);
+      const remainingIssues = state.result.issues.filter(
+        (issue) => !appliedIssueSet.has(issue)
+      );
+
+      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+      dispatch({
+        type: "SET_RESULT",
+        result: {
+          corrected_text: newText,
+          issues: remainingIssues,
+        },
+      });
+
+      await processText("ANALYZE", undefined, newText);
+    },
+    [dispatch, state.result, state.sourceText, processText]
+  );
+
+  const handleUndoBulk = useCallback(() => {
+    if (!state.bulkUndo) {
       return;
     }
 
-    let newText = state.sourceText;
-    for (const issue of state.result.issues) {
-      newText = newText.replace(issue.original, issue.suggestion);
-    }
-    dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+    processIdRef.current++;
 
-    dispatch({
-      type: "SET_RESULT",
-      result: {
-        corrected_text: newText,
-        issues: [],
-      },
+    dispatch({ type: "SET_SOURCE_TEXT", text: state.bulkUndo.sourceText });
+    dispatch({ type: "SET_RESULT", result: state.bulkUndo.result });
+    dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
+
+    trackEvent("bulk_undo", {
+      requestedCount: state.bulkUndo.requestedCount,
+      appliedCount: state.bulkUndo.appliedCount,
+      skippedCount: state.bulkUndo.skippedCount,
     });
-  }, [state.result, state.sourceText]);
+  }, [dispatch, state.bulkUndo]);
 
   const handleCustomSubmit = useCallback(
     (instruction: string) => {
+      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       processText("CUSTOM", instruction);
     },
-    [processText]
+    [dispatch, processText]
   );
 
   const handleToolbarOpen = useCallback(() => {
@@ -348,7 +422,7 @@ export default function App() {
       const position = calculateModalPosition(rect);
       dispatch({ type: "SHOW_MODAL", text, position, autoRun: true });
     }
-  }, [state.selectionRect]);
+  }, [dispatch, state.selectionRect]);
 
   // Auto-run reduces friction for selection-driven flows.
   useEffect(() => {
@@ -476,6 +550,8 @@ export default function App() {
         onApplyFix={handleApplyFix}
         onApplyWordFix={handleApplyWordFix}
         onApplyAllFixes={handleApplyAllFixes}
+        bulkUndo={state.bulkUndo}
+        onUndoBulk={handleUndoBulk}
         onCopy={handleCopy}
         onReset={handleReset}
         onCustomSubmit={handleCustomSubmit}

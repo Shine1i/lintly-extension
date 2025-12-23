@@ -1,4 +1,11 @@
-import type { Action, AnalyzeResult, OffscreenMessage, Tone } from "@/lib/types";
+import { parse } from "@hoangvu12/yomi";
+import { z } from "zod";
+import type {
+  Action,
+  AnalyzeResult,
+  OffscreenMessage,
+  Tone,
+} from "@/lib/types";
 import {
   ANALYZE_SYSTEM,
   SUMMARIZE_SYSTEM,
@@ -7,11 +14,42 @@ import {
   TONE_PROMPTS,
 } from "@/lib/prompts";
 
-const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "moogin/lintly-lfm2-700m-dpo-new";
+// const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
+const API_URL = "https://openai.studyon.app/api/chat/completions";
+// const MODEL = "moogin/lintly-lfm2-700m-dpo-new";
+const MODEL = "google/gemini-2.5-flash-lite";
 
-async function callAPI(systemPrompt: string, userText: string): Promise<string> {
-  console.log("[Lintly API] Calling API with text:", userText.substring(0, 100) + "...");
+const IssueSchema = z.object({
+  type: z.enum([
+    "grammar",
+    "spelling",
+    "punctuation",
+    "clarity",
+    "word_choice",
+  ]),
+  category: z.string(),
+  severity: z.enum(["error", "warning", "suggestion"]),
+  original: z.string(),
+  suggestion: z.string(),
+  explanation: z.string().default(""),
+  confidence: z.number().optional(),
+  start: z.number().optional(),
+  end: z.number().optional(),
+});
+
+const AnalyzeResultSchema = z.object({
+  corrected_text: z.string(),
+  issues: z.array(IssueSchema).default([]),
+});
+
+async function callAPI(
+  systemPrompt: string,
+  userText: string
+): Promise<string> {
+  console.log(
+    "[Lintly API] Calling API with text:",
+    userText.substring(0, 100) + "..."
+  );
 
   const res = await fetch(API_URL, {
     method: "POST",
@@ -22,26 +60,26 @@ async function callAPI(systemPrompt: string, userText: string): Promise<string> 
         { role: "system", content: systemPrompt },
         { role: "user", content: userText },
       ],
-      temperature: 0.3,
-      min_p: 0.15,
-      repetition_penalty: 1.05,
+      temperature: 0,
+      // temperature: 0.3,
+      // min_p: 0.15,
+      // repetition_penalty: 1.05,
     }),
   });
-
-  console.log("[Lintly API] Response status:", res.status, res.statusText);
 
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();
-  console.log("[Lintly API] Raw response:", JSON.stringify(data, null, 2));
-  console.log("[Lintly API] Content:", data.choices[0].message.content);
 
   return data.choices[0].message.content;
 }
 
-function getSystemPrompt(action: Action, options?: { tone?: Tone; customInstruction?: string }): string {
+function getSystemPrompt(
+  action: Action,
+  options?: { tone?: Tone; customInstruction?: string }
+): string {
   switch (action) {
     case "ANALYZE":
       return ANALYZE_SYSTEM;
@@ -69,15 +107,18 @@ async function processText(
   const systemPrompt = getSystemPrompt(action, options);
   const response = await callAPI(systemPrompt, text);
 
+  console.log(typeof response);
+
   if (action === "ANALYZE") {
-    try {
-      const parsed = JSON.parse(response) as AnalyzeResult;
-      console.log("[Lintly API] Parsed ANALYZE result:", parsed);
-      return parsed;
-    } catch (e) {
-      console.log("[Lintly API] Failed to parse as JSON, using raw response:", e);
-      return { corrected_text: response, issues: [] };
+    const parsed = parse(AnalyzeResultSchema, response);
+
+    if (parsed.success) {
+      console.log("[Lintly API] Parsed ANALYZE result:", parsed.data);
+
+      return parsed.data;
     }
+    console.log("[Lintly API] Failed to parse with schema:", parsed.error);
+    return { corrected_text: response, issues: [] };
   }
 
   return response;

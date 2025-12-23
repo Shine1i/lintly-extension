@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Wand2 } from "lucide-react";
 import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
-import { Button } from "@/components/ui/button";
+import { BulkAcceptPanel } from "./BulkAcceptPanel";
+import { BulkUndoBanner } from "./BulkUndoBanner";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
+import type { BulkUndoState } from "@/lib/state/lintlyAppState";
+import { BULK_MIN_COUNT, getBulkCandidates } from "@/lib/bulkAccept";
+import { sortIssuesByTextPosition } from "@/lib/textPositioning";
+import { trackEvent } from "@/lib/analytics";
 
 interface LintlyModalProps {
   isVisible: boolean;
@@ -17,7 +21,9 @@ interface LintlyModalProps {
   result: string | AnalyzeResult | null;
   onApplyFix: (issue: Issue) => void;
   onApplyWordFix?: (issue: Issue) => void;
-  onApplyAllFixes: () => void;
+  onApplyAllFixes: (issues: Issue[]) => void;
+  bulkUndo: BulkUndoState | null;
+  onUndoBulk: () => void;
   onCopy: () => void;
   onReset: () => void;
   onCustomSubmit: (instruction: string) => void;
@@ -35,6 +41,8 @@ export function LintlyModal({
   onApplyFix,
   onApplyWordFix,
   onApplyAllFixes,
+  bulkUndo,
+  onUndoBulk,
   onCopy,
   onReset,
   onCustomSubmit,
@@ -62,6 +70,7 @@ export function LintlyModal({
     }
   }, [isVisible]);
 
+
   // Compute bounds before any early return to keep hook order stable.
   const adjustedPosition = useMemo(() => {
     const modalWidth = 560;
@@ -88,9 +97,6 @@ export function LintlyModal({
     return { x, y };
   }, [position]);
 
-  // Avoid conditional hooks.
-  if (!isVisible) return null;
-
   const issues: Issue[] = result && typeof result === "object" ? result.issues : [];
 
   // Keep source text while issues remain so highlights stay aligned.
@@ -104,6 +110,78 @@ export function LintlyModal({
   const wordCount = displayText.trim().split(/\s+/).filter(Boolean).length;
   const readTimeSeconds = Math.max(1, Math.ceil(wordCount / 200) * 60);
 
+  const bulkCandidates = useMemo(() => getBulkCandidates(issues), [issues]);
+  const sortedBulkCandidates = useMemo(
+    () => sortIssuesByTextPosition(sourceText, bulkCandidates),
+    [sourceText, bulkCandidates]
+  );
+  const [bulkDismissed, setBulkDismissed] = useState(false);
+  const [bulkOfferTracked, setBulkOfferTracked] = useState(false);
+  const [selectedBulkIssues, setSelectedBulkIssues] = useState<Issue[]>([]);
+
+  useEffect(() => {
+    setSelectedBulkIssues(sortedBulkCandidates);
+    setBulkDismissed(false);
+    setBulkOfferTracked(false);
+  }, [sortedBulkCandidates, sourceText]);
+
+  useEffect(() => {
+    if (!isVisible) {
+      setBulkDismissed(false);
+      setBulkOfferTracked(false);
+      setSelectedBulkIssues([]);
+    }
+  }, [isVisible]);
+
+  const showBulkPanel =
+    isVisible &&
+    !bulkUndo &&
+    !bulkDismissed &&
+    !isLoading &&
+    sortedBulkCandidates.length >= BULK_MIN_COUNT;
+
+  useEffect(() => {
+    if (!showBulkPanel || bulkOfferTracked) return;
+    trackEvent("bulk_offer_shown", {
+      totalIssues: issues.length,
+      eligibleIssues: sortedBulkCandidates.length,
+      sourceLength: sourceText.length,
+    });
+    setBulkOfferTracked(true);
+  }, [
+    bulkOfferTracked,
+    issues.length,
+    showBulkPanel,
+    sortedBulkCandidates.length,
+    sourceText.length,
+  ]);
+
+  const handleBulkToggle = (issue: Issue) => {
+    setSelectedBulkIssues((prev) =>
+      prev.includes(issue) ? prev.filter((item) => item !== issue) : [...prev, issue]
+    );
+  };
+
+  const handleBulkSelectAll = () => {
+    setSelectedBulkIssues(sortedBulkCandidates);
+  };
+
+  const handleBulkSelectNone = () => {
+    setSelectedBulkIssues([]);
+  };
+
+  const handleBulkDismiss = () => {
+    setBulkDismissed(true);
+    trackEvent("bulk_offer_dismissed", {
+      totalIssues: issues.length,
+      eligibleIssues: sortedBulkCandidates.length,
+    });
+  };
+
+  const handleBulkApply = () => {
+    onApplyAllFixes(selectedBulkIssues);
+  };
+
   const handleModalMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
@@ -113,6 +191,9 @@ export function LintlyModal({
       onCustomSubmit(customInstruction);
     }
   };
+
+  // Avoid conditional hooks.
+  if (!isVisible) return null;
 
   return (
     <>
@@ -149,6 +230,27 @@ export function LintlyModal({
             onToneChange={onToneChange}
           />
 
+          {bulkUndo && (
+            <BulkUndoBanner
+              appliedCount={bulkUndo.appliedCount}
+              skippedCount={bulkUndo.skippedCount}
+              onUndo={onUndoBulk}
+            />
+          )}
+
+          {showBulkPanel && (
+            <BulkAcceptPanel
+              issues={sortedBulkCandidates}
+              selectedIssues={selectedBulkIssues}
+              onToggleIssue={handleBulkToggle}
+              onSelectAll={handleBulkSelectAll}
+              onSelectNone={handleBulkSelectNone}
+              onApply={handleBulkApply}
+              onDismiss={handleBulkDismiss}
+              isLoading={isLoading}
+            />
+          )}
+
           <TextSurface
             text={displayText}
             issues={issues}
@@ -158,19 +260,10 @@ export function LintlyModal({
           />
 
           {issues.length > 0 && (
-            <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-between">
+            <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-start">
               <span className="text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">{issues.length}</span> {issues.length === 1 ? "issue" : "issues"} found
               </span>
-              <Button
-                onClick={onApplyAllFixes}
-                variant="default"
-                size="sm"
-                className="h-7 px-2.5 text-xs font-medium"
-              >
-                <Wand2 className="w-3.5 h-3.5 mr-1.5" />
-                Apply All
-              </Button>
             </div>
           )}
 
