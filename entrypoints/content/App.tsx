@@ -15,7 +15,6 @@ import {
   type SentenceRange,
 } from "@/lib/sentences";
 import { mergeIssuesForSentence } from "@/lib/issueMerge";
-import { applyBulkIssues } from "@/lib/bulkApply";
 import { trackEvent } from "@/lib/analytics";
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
@@ -319,66 +318,6 @@ export default function App() {
     [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
   );
 
-  const handleApplyAllFixes = useCallback(
-    async (issuesToApply: Issue[]) => {
-      if (!state.result || typeof state.result !== "object") {
-        return;
-      }
-
-      const targetIssues = issuesToApply;
-      if (targetIssues.length === 0) {
-        return;
-      }
-
-      const previousText = state.sourceText;
-      const previousResult = state.result;
-      const { text: newText, appliedIssues, skippedIssues } = applyBulkIssues(
-        state.sourceText,
-        targetIssues
-      );
-
-      trackEvent("bulk_accept", {
-        requestedCount: targetIssues.length,
-        appliedCount: appliedIssues.length,
-        skippedCount: skippedIssues.length,
-        totalIssues: state.result.issues.length,
-      });
-
-      if (appliedIssues.length === 0) {
-        return;
-      }
-
-      dispatch({
-        type: "SET_BULK_UNDO",
-        bulkUndo: {
-          sourceText: previousText,
-          result: previousResult,
-          appliedCount: appliedIssues.length,
-          skippedCount: skippedIssues.length,
-          requestedCount: targetIssues.length,
-          timestamp: Date.now(),
-        },
-      });
-
-      const appliedIssueSet = new Set(appliedIssues);
-      const remainingIssues = state.result.issues.filter(
-        (issue) => !appliedIssueSet.has(issue)
-      );
-
-      dispatch({ type: "SET_SOURCE_TEXT", text: newText });
-      dispatch({
-        type: "SET_RESULT",
-        result: {
-          corrected_text: newText,
-          issues: remainingIssues,
-        },
-      });
-
-      await processText("ANALYZE", undefined, newText);
-    },
-    [dispatch, state.result, state.sourceText, processText]
-  );
-
   const handleUndoBulk = useCallback(() => {
     if (!state.bulkUndo) {
       return;
@@ -549,7 +488,6 @@ export default function App() {
         result={state.result}
         onApplyFix={handleApplyFix}
         onApplyWordFix={handleApplyWordFix}
-        onApplyAllFixes={handleApplyAllFixes}
         bulkUndo={state.bulkUndo}
         onUndoBulk={handleUndoBulk}
         onCopy={handleCopy}

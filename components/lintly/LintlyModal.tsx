@@ -2,13 +2,9 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
-import { BulkAcceptPanel } from "./BulkAcceptPanel";
 import { BulkUndoBanner } from "./BulkUndoBanner";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
 import type { BulkUndoState } from "@/lib/state/lintlyAppState";
-import { BULK_MIN_COUNT, getBulkCandidates } from "@/lib/bulkAccept";
-import { sortIssuesByTextPosition } from "@/lib/textPositioning";
-import { trackEvent } from "@/lib/analytics";
 
 interface LintlyModalProps {
   isVisible: boolean;
@@ -21,7 +17,6 @@ interface LintlyModalProps {
   result: string | AnalyzeResult | null;
   onApplyFix: (issue: Issue) => void;
   onApplyWordFix?: (issue: Issue) => void;
-  onApplyAllFixes: (issues: Issue[]) => void;
   bulkUndo: BulkUndoState | null;
   onUndoBulk: () => void;
   onCopy: () => void;
@@ -40,7 +35,6 @@ export function LintlyModal({
   result,
   onApplyFix,
   onApplyWordFix,
-  onApplyAllFixes,
   bulkUndo,
   onUndoBulk,
   onCopy,
@@ -110,78 +104,6 @@ export function LintlyModal({
   const wordCount = displayText.trim().split(/\s+/).filter(Boolean).length;
   const readTimeSeconds = Math.max(1, Math.ceil(wordCount / 200) * 60);
 
-  const bulkCandidates = useMemo(() => getBulkCandidates(issues), [issues]);
-  const sortedBulkCandidates = useMemo(
-    () => sortIssuesByTextPosition(sourceText, bulkCandidates),
-    [sourceText, bulkCandidates]
-  );
-  const [bulkDismissed, setBulkDismissed] = useState(false);
-  const [bulkOfferTracked, setBulkOfferTracked] = useState(false);
-  const [selectedBulkIssues, setSelectedBulkIssues] = useState<Issue[]>([]);
-
-  useEffect(() => {
-    setSelectedBulkIssues(sortedBulkCandidates);
-    setBulkDismissed(false);
-    setBulkOfferTracked(false);
-  }, [sortedBulkCandidates, sourceText]);
-
-  useEffect(() => {
-    if (!isVisible) {
-      setBulkDismissed(false);
-      setBulkOfferTracked(false);
-      setSelectedBulkIssues([]);
-    }
-  }, [isVisible]);
-
-  const showBulkPanel =
-    isVisible &&
-    !bulkUndo &&
-    !bulkDismissed &&
-    !isLoading &&
-    sortedBulkCandidates.length >= BULK_MIN_COUNT;
-
-  useEffect(() => {
-    if (!showBulkPanel || bulkOfferTracked) return;
-    trackEvent("bulk_offer_shown", {
-      totalIssues: issues.length,
-      eligibleIssues: sortedBulkCandidates.length,
-      sourceLength: sourceText.length,
-    });
-    setBulkOfferTracked(true);
-  }, [
-    bulkOfferTracked,
-    issues.length,
-    showBulkPanel,
-    sortedBulkCandidates.length,
-    sourceText.length,
-  ]);
-
-  const handleBulkToggle = (issue: Issue) => {
-    setSelectedBulkIssues((prev) =>
-      prev.includes(issue) ? prev.filter((item) => item !== issue) : [...prev, issue]
-    );
-  };
-
-  const handleBulkSelectAll = () => {
-    setSelectedBulkIssues(sortedBulkCandidates);
-  };
-
-  const handleBulkSelectNone = () => {
-    setSelectedBulkIssues([]);
-  };
-
-  const handleBulkDismiss = () => {
-    setBulkDismissed(true);
-    trackEvent("bulk_offer_dismissed", {
-      totalIssues: issues.length,
-      eligibleIssues: sortedBulkCandidates.length,
-    });
-  };
-
-  const handleBulkApply = () => {
-    onApplyAllFixes(selectedBulkIssues);
-  };
-
   const handleModalMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
@@ -237,19 +159,6 @@ export function LintlyModal({
               appliedCount={bulkUndo.appliedCount}
               skippedCount={bulkUndo.skippedCount}
               onUndo={onUndoBulk}
-            />
-          )}
-
-          {showBulkPanel && (
-            <BulkAcceptPanel
-              issues={sortedBulkCandidates}
-              selectedIssues={selectedBulkIssues}
-              onToggleIssue={handleBulkToggle}
-              onSelectAll={handleBulkSelectAll}
-              onSelectNone={handleBulkSelectNone}
-              onApply={handleBulkApply}
-              onDismiss={handleBulkDismiss}
-              isLoading={isLoading}
             />
           )}
 

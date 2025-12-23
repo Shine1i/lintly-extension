@@ -43,7 +43,7 @@ export function useIssueRects({
   isTyping,
   charDelta,
   changePosition,
-  elementPosition,
+  elementPosition: _elementPosition,
   scrollPosition,
   layoutVersion,
 }: UseIssueRectsOptions): UseIssueRectsResult {
