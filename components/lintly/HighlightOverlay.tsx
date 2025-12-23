@@ -20,9 +20,7 @@ import { useIssuePopover } from "./highlightOverlay/useIssuePopover";
 import {
   rectIntersectsBounds,
   toLocalRects,
-  toViewportRects,
   type RectBox,
-  type ScrollBaseline,
 } from "./highlightOverlay/geometry";
 
 function getInlineHighlightClass(severity: Issue["severity"]): string {
@@ -45,9 +43,8 @@ export interface IssueFixContext {
 }
 
 interface RectCacheEntry {
+  // Content-relative rects (same coordinate system as issue rects)
   rects: RectBox[];
-  baseScrollTop: number;
-  baseScrollLeft: number;
 }
 
 interface HighlightOverlayProps {
@@ -73,7 +70,7 @@ export function HighlightOverlay({
   charDelta = 0,
   changePosition = 0,
 }: HighlightOverlayProps) {
-  const { scrollPosition, elementPosition, layoutVersion } = useScrollSync(targetElement);
+  const { scrollPosition, elementPosition, pagePosition, layoutVersion } = useScrollSync(targetElement);
   const resolvedText = useMemo(() => {
     if (!targetElement) {
       return elementText ?? "";
@@ -117,8 +114,8 @@ export function HighlightOverlay({
   });
 
   const [activeSentenceRange, setActiveSentenceRange] = useState<SentenceRange | null>(null);
+  // Content-relative rects for the active sentence
   const [activeSentenceRects, setActiveSentenceRects] = useState<RectBox[]>([]);
-  const activeSentenceBaseScrollRef = useRef<ScrollBaseline>({ scrollTop: 0, scrollLeft: 0 });
   const sentenceRectsCacheRef = useRef<Map<string, RectCacheEntry>>(new Map());
 
   useEffect(() => {
@@ -146,38 +143,35 @@ export function HighlightOverlay({
       const sentenceKey = `${range.coreStart}:${range.coreEnd}`;
       const cached = sentenceRectsCacheRef.current.get(sentenceKey);
       if (cached) {
-        activeSentenceBaseScrollRef.current = {
-          scrollTop: cached.baseScrollTop,
-          scrollLeft: cached.baseScrollLeft,
-        };
         setActiveSentenceRange(range);
         setActiveSentenceRects(cached.rects);
         return;
       }
 
       const elementRect = targetElement.getBoundingClientRect();
-      const baseScrollTop = targetElement.scrollTop ?? 0;
-      const baseScrollLeft = targetElement.scrollLeft ?? 0;
+      const measureScrollTop = targetElement.scrollTop ?? 0;
+      const measureScrollLeft = targetElement.scrollLeft ?? 0;
       const rects = getTextRangeRects(
         targetElement,
         range.coreStart,
         range.coreEnd,
         elementRect
       );
+      // Convert to content-relative coords (add scroll offset)
       const localRects = toLocalRects(rects, elementRect);
+      const contentRects = localRects.map((rect) => ({
+        left: rect.left + measureScrollLeft,
+        top: rect.top + measureScrollTop,
+        width: rect.width,
+        height: rect.height,
+      }));
 
       sentenceRectsCacheRef.current.set(sentenceKey, {
-        rects: localRects,
-        baseScrollTop,
-        baseScrollLeft,
+        rects: contentRects,
       });
 
-      activeSentenceBaseScrollRef.current = {
-        scrollTop: baseScrollTop,
-        scrollLeft: baseScrollLeft,
-      };
       setActiveSentenceRange(range);
-      setActiveSentenceRects(localRects);
+      setActiveSentenceRects(contentRects);
     },
     [issueContexts, targetElement]
   );
@@ -196,6 +190,7 @@ export function HighlightOverlay({
       issueById,
       issuesCount: issues.length,
       targetElement,
+      scrollPosition,
       onHoverIssueChange: handleHoverIssueChange,
     });
 
@@ -320,25 +315,15 @@ export function HighlightOverlay({
     ]
   );
 
+  // Filter sentence rects to only those in the visible content area
   const renderedSentenceRects = useMemo(() => {
-    if (!elementPosition || !activeSentenceRange || activeSentenceRects.length === 0) {
+    if (!activeSentenceRange || activeSentenceRects.length === 0) {
       return [];
     }
 
-    const rects = toViewportRects(
-      activeSentenceRects,
-      elementPosition,
-      activeSentenceBaseScrollRef.current,
-      scrollPosition
-    );
-    if (!clipBounds) return rects;
-    return rects.filter((rect) => rectIntersectsBounds(rect, clipBounds));
-  }, [activeSentenceRects, activeSentenceRange, elementPosition, scrollPosition, clipBounds]);
-
-  const clipPath = useMemo(() => {
-    if (!clipBounds) return undefined;
-    return `polygon(${clipBounds.left}px ${clipBounds.top}px, ${clipBounds.right}px ${clipBounds.top}px, ${clipBounds.right}px ${clipBounds.bottom}px, ${clipBounds.left}px ${clipBounds.bottom}px)`;
-  }, [clipBounds]);
+    if (!clipBounds) return activeSentenceRects;
+    return activeSentenceRects.filter((rect) => rectIntersectsBounds(rect, clipBounds));
+  }, [activeSentenceRects, activeSentenceRange, clipBounds]);
 
   const activeIssue = popoverIssueId ? issueById.get(popoverIssueId) : null;
   const activeContext = activeIssue ? issueContexts.get(activeIssue) : undefined;
@@ -349,61 +334,81 @@ export function HighlightOverlay({
       : undefined;
   const isPopoverOpen = Boolean(activeIssue && anchorRect);
 
-  if (!elementPosition || issues.length === 0 || displayRects.size === 0) {
+  if (!pagePosition || issues.length === 0 || displayRects.size === 0) {
     return null;
   }
+
+  // Get element dimensions for the inner layer
+  const scrollWidth = targetElement.scrollWidth;
+  const scrollHeight = targetElement.scrollHeight;
 
   return (
     <div
       className="lintly-inline-overlay"
       style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100vw",
-        height: "100vh",
+        position: "absolute",
+        top: pagePosition.pageTop,
+        left: pagePosition.pageLeft,
+        width: pagePosition.width,
+        height: pagePosition.height,
+        overflow: "hidden",
         pointerEvents: "none",
         zIndex: 2147483640,
-        clipPath,
       }}
     >
-      {activeSentenceRange &&
-        renderedSentenceRects.map((rect, index) => (
-          <div
-            key={`sentence-${index}`}
-            className="lintly-inline-sentence-highlight"
-            style={{
-              position: "fixed",
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-            }}
-          />
-        ))}
+      {/* Inner layer - transformed to compensate for element's internal scroll */}
+      <div
+        className="lintly-inline-overlay-inner"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: scrollWidth,
+          height: scrollHeight,
+          transform: `translate(${-scrollPosition.scrollLeft}px, ${-scrollPosition.scrollTop}px)`,
+        }}
+      >
+        {/* Sentence highlights */}
+        {activeSentenceRange &&
+          renderedSentenceRects.map((rect, index) => (
+            <div
+              key={`sentence-${index}`}
+              className="lintly-inline-sentence-highlight"
+              style={{
+                position: "absolute",
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          ))}
 
-      {issues.map((issue) => {
-        const issueId = issueIdByIssue.get(issue);
-        if (!issueId) return null;
-        const rects = displayRects.get(issueId);
-        if (!rects || rects.length === 0) return null;
+        {/* Issue highlights */}
+        {issues.map((issue) => {
+          const issueId = issueIdByIssue.get(issue);
+          if (!issueId) return null;
+          const rects = displayRects.get(issueId);
+          if (!rects || rects.length === 0) return null;
 
-        const highlightClass = getInlineHighlightClass(issue.severity);
-        return rects.map((rect, rectIndex) => (
-          <div
-            key={`${issueId}-${rectIndex}`}
-            className={`lintly-inline-highlight ${highlightClass}`}
-            style={{
-              position: "fixed",
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-            }}
-          />
-        ));
-      })}
+          const highlightClass = getInlineHighlightClass(issue.severity);
+          return rects.map((rect, rectIndex) => (
+            <div
+              key={`${issueId}-${rectIndex}`}
+              className={`lintly-inline-highlight ${highlightClass}`}
+              style={{
+                position: "absolute",
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          ));
+        })}
+      </div>
 
+      {/* Popover - rendered outside the transformed layer for correct positioning */}
       {activeIssue && anchorRect && (
         <HighlightSpan
           issue={activeIssue}

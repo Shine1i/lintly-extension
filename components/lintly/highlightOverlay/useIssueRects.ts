@@ -6,14 +6,10 @@ import {
   OCCLUSION_RECT_LIMIT,
   OCCLUSION_SCROLL_THRESHOLD,
   countRects,
-  getOverflowAncestors,
-  intersectBounds,
   rectIntersectsBounds,
   toLocalRects,
-  toViewportRects,
   type ClipBounds,
   type RectBox,
-  type ScrollBaseline,
 } from "./geometry";
 
 interface UseIssueRectsOptions {
@@ -51,8 +47,8 @@ export function useIssueRects({
   scrollPosition,
   layoutVersion,
 }: UseIssueRectsOptions): UseIssueRectsResult {
-  const [issueLocalRects, setIssueLocalRects] = useState<Map<string, RectBox[]>>(new Map());
-  const issueRectsBaseScrollRef = useRef<ScrollBaseline>({ scrollTop: 0, scrollLeft: 0 });
+  // Content-relative rects (relative to element's full scrollable content, not visual area)
+  const [issueContentRects, setIssueContentRects] = useState<Map<string, RectBox[]>>(new Map());
   const [issueOccurrenceIndices, setIssueOccurrenceIndices] = useState<Map<string, number>>(
     new Map()
   );
@@ -62,24 +58,15 @@ export function useIssueRects({
   const lastOcclusionRef = useRef<{ scrollTop: number; scrollLeft: number; layoutVersion: number }>(
     { scrollTop: 0, scrollLeft: 0, layoutVersion: -1 }
   );
-  const overflowAncestorsRef = useRef<HTMLElement[]>([]);
   const rectMeasureIdRef = useRef(0);
   const rectMeasureRafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!targetElement) {
-      overflowAncestorsRef.current = [];
-      return;
-    }
-    overflowAncestorsRef.current = getOverflowAncestors(targetElement);
-  }, [targetElement, layoutVersion]);
 
   useEffect(() => {
     if (!targetElement || issues.length === 0) {
       setIssueOccurrenceIndices(new Map());
       setIssueTextPositions(new Map());
       prevIssueIdsRef.current = new Set();
-      setIssueLocalRects(new Map());
+      setIssueContentRects(new Map());
       setVisibleRects(new Map());
       lastOcclusionRef.current = { scrollTop: 0, scrollLeft: 0, layoutVersion: -1 };
       return;
@@ -102,7 +89,7 @@ export function useIssueRects({
 
     const removedKeys = [...prevIssueIdsRef.current].filter((key) => !currentKeys.has(key));
     if (removedKeys.length > 0) {
-      setIssueLocalRects((prev) => {
+      setIssueContentRects((prev) => {
         const next = new Map(prev);
         let changed = false;
         for (const key of removedKeys) {
@@ -123,7 +110,7 @@ export function useIssueRects({
 
   useEffect(() => {
     if (!targetElement || issues.length === 0) {
-      setIssueLocalRects(new Map());
+      setIssueContentRects(new Map());
       return;
     }
 
@@ -139,12 +126,9 @@ export function useIssueRects({
     }
 
     const elementRect = targetElement.getBoundingClientRect();
-    const baseScrollTop = targetElement.scrollTop ?? 0;
-    const baseScrollLeft = targetElement.scrollLeft ?? 0;
-    issueRectsBaseScrollRef.current = {
-      scrollTop: baseScrollTop,
-      scrollLeft: baseScrollLeft,
-    };
+    // Capture scroll position to convert visual coords to content coords
+    const measureScrollTop = targetElement.scrollTop ?? 0;
+    const measureScrollLeft = targetElement.scrollLeft ?? 0;
 
     const positions = getIssuePositions(elementText, issues);
     const pending: Array<{ issueId: string; start: number; end: number }> = [];
@@ -159,11 +143,11 @@ export function useIssueRects({
     }
 
     if (pending.length === 0) {
-      setIssueLocalRects(new Map());
+      setIssueContentRects(new Map());
       return;
     }
 
-    setIssueLocalRects((prev) => {
+    setIssueContentRects((prev) => {
       const next = new Map(prev);
       let changed = false;
       for (const key of next.keys()) {
@@ -198,13 +182,22 @@ export function useIssueRects({
           elementRect
         );
         if (rects.length > 0) {
-          batchRects.set(task.issueId, toLocalRects(rects, elementRect));
+          // Convert to content-relative coords (add scroll offset)
+          // This gives us coordinates relative to the full scrollable content
+          const localRects = toLocalRects(rects, elementRect);
+          const contentRects = localRects.map((rect) => ({
+            left: rect.left + measureScrollLeft,
+            top: rect.top + measureScrollTop,
+            width: rect.width,
+            height: rect.height,
+          }));
+          batchRects.set(task.issueId, contentRects);
         }
         processed += 1;
       }
 
       if (batchRects.size > 0) {
-        setIssueLocalRects((prev) => {
+        setIssueContentRects((prev) => {
           const next = new Map(prev);
           for (const [issueId, rects] of batchRects.entries()) {
             next.set(issueId, rects);
@@ -230,16 +223,16 @@ export function useIssueRects({
     };
   }, [targetElement, issues, elementText, isTyping, issueIdByIssue, layoutVersion]);
 
-  const shiftedLocalRects = useMemo(() => {
-    if (!isTyping || charDelta === 0 || issueLocalRects.size === 0) {
-      return issueLocalRects;
+  const shiftedContentRects = useMemo(() => {
+    if (!isTyping || charDelta === 0 || issueContentRects.size === 0) {
+      return issueContentRects;
     }
 
     const avgCharWidth = 8;
     const pixelShift = charDelta * avgCharWidth;
 
     const shifted = new Map<string, RectBox[]>();
-    for (const [issueId, rects] of issueLocalRects.entries()) {
+    for (const [issueId, rects] of issueContentRects.entries()) {
       const textPos = issueTextPositions.get(issueId);
       if (textPos !== undefined && textPos >= changePosition) {
         const shiftedRectsArray = rects.map((rect) => ({
@@ -254,80 +247,62 @@ export function useIssueRects({
       }
     }
     return shifted;
-  }, [issueLocalRects, isTyping, charDelta, changePosition, issueTextPositions]);
+  }, [issueContentRects, isTyping, charDelta, changePosition, issueTextPositions]);
 
+  // Clip bounds in content coordinates - represents the visible area of the element's content
   const clipBounds = useMemo<ClipBounds | null>(() => {
-    if (!elementPosition || !targetElement) return null;
+    if (!targetElement) return null;
 
     const style = getComputedStyle(targetElement);
     const paddingTop = parseFloat(style.paddingTop) || 0;
     const paddingLeft = parseFloat(style.paddingLeft) || 0;
     const paddingRight = parseFloat(style.paddingRight) || 0;
     const paddingBottom = parseFloat(style.paddingBottom) || 0;
-    const borderTop = parseFloat(style.borderTopWidth) || 0;
-    const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-    const borderRight = parseFloat(style.borderRightWidth) || 0;
-    const borderBottom = parseFloat(style.borderBottomWidth) || 0;
 
-    let bounds: ClipBounds | null = {
-      left: elementPosition.left + borderLeft + paddingLeft,
-      top: elementPosition.top + borderTop + paddingTop,
-      right: elementPosition.left + elementPosition.width - borderRight - paddingRight,
-      bottom: elementPosition.top + elementPosition.height - borderBottom - paddingBottom,
+    // Visible content area in content coordinates
+    // scrollPosition tells us which part of the content is visible
+    const visibleContentLeft = scrollPosition.scrollLeft + paddingLeft;
+    const visibleContentTop = scrollPosition.scrollTop + paddingTop;
+    const visibleContentRight =
+      scrollPosition.scrollLeft + targetElement.clientWidth - paddingRight;
+    const visibleContentBottom =
+      scrollPosition.scrollTop + targetElement.clientHeight - paddingBottom;
+
+    return {
+      left: visibleContentLeft,
+      top: visibleContentTop,
+      right: visibleContentRight,
+      bottom: visibleContentBottom,
     };
+  }, [targetElement, scrollPosition, layoutVersion]);
 
-    const viewportBounds: ClipBounds = {
-      left: 0,
-      top: 0,
-      right: window.innerWidth,
-      bottom: window.innerHeight,
-    };
-    bounds = intersectBounds(bounds, viewportBounds);
-
-    if (!bounds) return null;
-
-    for (const ancestor of overflowAncestorsRef.current) {
-      const rect = ancestor.getBoundingClientRect();
-      const ancestorBounds: ClipBounds = {
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-      };
-      bounds = intersectBounds(bounds, ancestorBounds);
-      if (!bounds) return null;
-    }
-
-    return bounds;
-  }, [elementPosition, targetElement, layoutVersion]);
-
+  // Rects in content coordinates, filtered by visible area
   const renderedRects = useMemo(() => {
-    if (!elementPosition) {
+    if (!targetElement) {
       return new Map<string, RectBox[]>();
     }
 
-    const baseScroll = issueRectsBaseScrollRef.current;
     const rendered = new Map<string, RectBox[]>();
     const bounds = clipBounds;
 
-    for (const [issueId, rects] of shiftedLocalRects.entries()) {
-      const viewportRects = toViewportRects(rects, elementPosition, baseScroll, scrollPosition);
+    for (const [issueId, rects] of shiftedContentRects.entries()) {
+      // Filter to only rects that intersect the visible content area
       const filtered = bounds
-        ? viewportRects.filter((rect) => rectIntersectsBounds(rect, bounds))
-        : viewportRects;
+        ? rects.filter((rect) => rectIntersectsBounds(rect, bounds))
+        : rects;
       if (filtered.length > 0) {
         rendered.set(issueId, filtered);
       }
     }
 
     return rendered;
-  }, [shiftedLocalRects, elementPosition, scrollPosition, clipBounds]);
+  }, [shiftedContentRects, targetElement, clipBounds]);
 
   const totalRenderedRects = useMemo(() => countRects(renderedRects), [renderedRects]);
   const occlusionEnabled = totalRenderedRects > 0 && totalRenderedRects <= OCCLUSION_RECT_LIMIT;
 
   useEffect(() => {
-    if (!elementPosition || renderedRects.size === 0) {
+    if (!targetElement || renderedRects.size === 0) {
       setVisibleRects(new Map());
       return;
     }
@@ -346,11 +321,17 @@ export function useIssueRects({
     }
 
     const rafId = requestAnimationFrame(() => {
+      // Get element position for converting content coords to viewport coords
+      const elementRect = targetElement.getBoundingClientRect();
+
       const filtered = new Map<string, RectBox[]>();
       for (const [issueId, rects] of renderedRects.entries()) {
         const visible = rects.filter((rect) => {
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
+          // Convert content coords to viewport coords for elementFromPoint
+          const viewportLeft = elementRect.left + rect.left - scrollPosition.scrollLeft;
+          const viewportTop = elementRect.top + rect.top - scrollPosition.scrollTop;
+          const centerX = viewportLeft + rect.width / 2;
+          const centerY = viewportTop + rect.height / 2;
           const hit = document.elementFromPoint(centerX, centerY);
           return Boolean(hit && targetElement?.contains(hit));
         });
@@ -368,14 +349,14 @@ export function useIssueRects({
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [renderedRects, elementPosition, scrollPosition, layoutVersion, targetElement, occlusionEnabled]);
+  }, [renderedRects, scrollPosition, layoutVersion, targetElement, occlusionEnabled]);
 
   const occlusionReady =
     occlusionEnabled && lastOcclusionRef.current.layoutVersion === layoutVersion;
   const displayRects = occlusionReady ? visibleRects : renderedRects;
 
   const removeIssueRects = useCallback((issueIds: Iterable<string>) => {
-    setIssueLocalRects((prev) => {
+    setIssueContentRects((prev) => {
       const next = new Map(prev);
       let changed = false;
       for (const issueId of issueIds) {

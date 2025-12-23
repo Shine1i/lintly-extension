@@ -499,12 +499,16 @@
 }
 
 /* ===== INLINE HIGHLIGHT OVERLAY STYLES ===== */
+/* Container uses absolute positioning at page coordinates (set via inline styles) */
 .lintly-inline-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
   pointer-events: none;
   z-index: 2147483640;
+  /* overflow: hidden is set inline to clip highlights to element bounds */
+}
+
+/* Inner layer that is transformed to compensate for element scroll */
+.lintly-inline-overlay-inner {
+  pointer-events: none;
 }
 
 /* Inline box highlights (like modal style) - semi-transparent */

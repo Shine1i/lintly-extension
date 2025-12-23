@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Issue } from "@/lib/types";
+import type { ScrollPosition } from "@/lib/hooks/useScrollSync";
 import type { RectBox } from "./geometry";
 
 interface UseIssuePopoverOptions {
@@ -7,6 +8,7 @@ interface UseIssuePopoverOptions {
   issueById: Map<string, Issue>;
   issuesCount: number;
   targetElement: HTMLElement | null;
+  scrollPosition: ScrollPosition;
   onHoverIssueChange: (issueId: string | null) => void;
 }
 
@@ -22,6 +24,7 @@ export function useIssuePopover({
   issueById,
   issuesCount,
   targetElement,
+  scrollPosition,
   onHoverIssueChange,
 }: UseIssuePopoverOptions): UseIssuePopoverResult {
   const [popoverIssueId, setPopoverIssueId] = useState<string | null>(null);
@@ -99,16 +102,26 @@ export function useIssuePopover({
 
   const findIssueAtPoint = useCallback(
     (x: number, y: number) => {
+      if (!targetElement) return null;
+
+      // Get element's viewport position for converting content coords to viewport coords
+      const elementRect = targetElement.getBoundingClientRect();
+
       for (const [issueId, rects] of displayRects.entries()) {
         for (const rect of rects) {
-          const right = rect.left + rect.width;
-          const bottom = rect.top + rect.height;
-          if (x >= rect.left && x <= right && y >= rect.top && y <= bottom) {
+          // Convert content coords to viewport coords
+          const viewportLeft = elementRect.left + rect.left - scrollPosition.scrollLeft;
+          const viewportTop = elementRect.top + rect.top - scrollPosition.scrollTop;
+          const viewportRight = viewportLeft + rect.width;
+          const viewportBottom = viewportTop + rect.height;
+
+          if (x >= viewportLeft && x <= viewportRight && y >= viewportTop && y <= viewportBottom) {
             return {
               issueId,
+              // Return viewport-relative rect for popover positioning
               rect: DOMRect.fromRect({
-                x: rect.left,
-                y: rect.top,
+                x: viewportLeft,
+                y: viewportTop,
                 width: rect.width,
                 height: rect.height,
               }),
@@ -118,7 +131,7 @@ export function useIssuePopover({
       }
       return null;
     },
-    [displayRects]
+    [displayRects, targetElement, scrollPosition]
   );
 
   const updateHoverFromPoint = useCallback(

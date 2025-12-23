@@ -17,9 +17,21 @@ export interface ElementPosition {
   height: number;
 }
 
+/** Page-relative position (document coordinates, not viewport) */
+export interface PagePosition {
+  pageTop: number;
+  pageLeft: number;
+  width: number;
+  height: number;
+}
+
 interface UseScrollSyncReturn {
+  /** Element's internal scroll position (for transform offset) */
   scrollPosition: ScrollPosition;
+  /** Element's viewport position (legacy, kept for compatibility) */
   elementPosition: ElementPosition | null;
+  /** Element's page position (document coordinates for absolute positioning) */
+  pagePosition: PagePosition | null;
   layoutVersion: number;
   recalculate: () => void;
 }
@@ -33,6 +45,7 @@ export function useScrollSync(
   });
 
   const [elementPosition, setElementPosition] = useState<ElementPosition | null>(null);
+  const [pagePosition, setPagePosition] = useState<PagePosition | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
 
   const rafRef = useRef<number | null>(null);
@@ -51,6 +64,13 @@ export function useScrollSync(
     setElementPosition({
       top: rect.top,
       left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    });
+    // Also compute page position (document coordinates)
+    setPagePosition({
+      pageTop: rect.top + window.scrollY,
+      pageLeft: rect.left + window.scrollX,
       width: rect.width,
       height: rect.height,
     });
@@ -140,6 +160,7 @@ export function useScrollSync(
   useEffect(() => {
     if (!targetElement) {
       setElementPosition(null);
+      setPagePosition(null);
       setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
       setLayoutVersion(0);
       styleSignatureRef.current = "";
@@ -166,27 +187,24 @@ export function useScrollSync(
 
     scrollAncestorsRef.current = findScrollAncestors(targetElement);
 
-    const handleScroll = () => updatePositions();
-    const handleViewportScroll = () => updatePositions();
+    // Element scroll: updates internal scroll position for transform
+    const handleElementScroll = () => updatePositions();
 
-    targetElement.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    document.addEventListener("scroll", handleScroll, {
-      passive: true,
-      capture: true,
-    });
-    window.addEventListener("resize", handleScroll, { passive: true });
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("scroll", handleViewportScroll, {
-        passive: true,
-      });
-      window.visualViewport.addEventListener("resize", handleViewportScroll, {
-        passive: true,
-      });
-    }
+    // Ancestor scroll: updates page position (element moves within scrollable container)
+    const handleAncestorScroll = () => updatePositions();
 
+    targetElement.addEventListener("scroll", handleElementScroll, { passive: true });
+
+    // NOTE: With absolute positioning, we don't need window/document scroll listeners.
+    // The overlay container scrolls naturally with the page.
+    // We only need ancestor scroll listeners for elements inside scrollable containers.
+
+    // Window resize still matters for layout changes
+    window.addEventListener("resize", handleAncestorScroll, { passive: true });
+
+    // Ancestor scroll listeners - needed when element is inside a scrollable container
     for (const ancestor of scrollAncestorsRef.current) {
-      ancestor.addEventListener("scroll", handleScroll, { passive: true });
+      ancestor.addEventListener("scroll", handleAncestorScroll, { passive: true });
     }
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -321,17 +339,11 @@ export function useScrollSync(
       intersectionObserverRef.current?.disconnect();
       intersectionObserverRef.current = null;
 
-      targetElement.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("scroll", handleScroll);
-      document.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleScroll);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener("scroll", handleViewportScroll);
-        window.visualViewport.removeEventListener("resize", handleViewportScroll);
-      }
+      targetElement.removeEventListener("scroll", handleElementScroll);
+      window.removeEventListener("resize", handleAncestorScroll);
 
       for (const ancestor of scrollAncestorsRef.current) {
-        ancestor.removeEventListener("scroll", handleScroll);
+        ancestor.removeEventListener("scroll", handleAncestorScroll);
       }
 
       resizeObserver.disconnect();
@@ -354,6 +366,7 @@ export function useScrollSync(
   return {
     scrollPosition,
     elementPosition,
+    pagePosition,
     layoutVersion,
     recalculate: updatePositions,
   };
