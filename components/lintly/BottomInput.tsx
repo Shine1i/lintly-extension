@@ -23,7 +23,7 @@ export function BottomInput({
   isLoading,
 }: BottomInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Stop all key events from propagating to prevent page shortcuts
+    // Prevent page-level shortcuts while typing inside the modal.
     e.stopPropagation();
 
     if (e.key === "Enter" && !e.shiftKey) {
@@ -35,10 +35,8 @@ export function BottomInput({
   return (
     <div className="shrink-0 p-3 bg-background border-t border-border/50 z-30">
       <div className="relative group">
-        {/* Subtle Glow behind input */}
         <div className="input-glow" />
 
-        {/* Input Container */}
         <div className="relative bg-background rounded-xl border border-border/60 flex items-center p-1 pl-3 shadow-sm hover:border-border hover:shadow-md transition-all">
           <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 mr-2 shrink-0" />
           <input
@@ -64,7 +62,6 @@ export function BottomInput({
         </div>
       </div>
 
-      {/* Footer Info */}
       <div className="flex items-center justify-between mt-2 px-1">
         <span className="text-[10px] text-muted-foreground">
           {wordCount} words &middot; {readTime}s read

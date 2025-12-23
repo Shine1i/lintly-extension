@@ -178,7 +178,7 @@ export function buildIssueSentenceContexts(
 
     const sentence = sentenceRanges[sentenceIndex];
     const relativeStart = pos.start - sentence.coreStart;
-    const relativeEnd = relativeStart + pos.issue.original.length;
+    const relativeEnd = relativeStart + (pos.end - pos.start);
 
     contexts.set(pos.issue, {
       issue: pos.issue,

@@ -10,6 +10,8 @@ export interface Issue {
   original: string;
   suggestion: string;
   explanation: string;
+  start?: number;
+  end?: number;
 }
 
 export interface AnalyzeResult {

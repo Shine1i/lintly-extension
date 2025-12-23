@@ -55,14 +55,14 @@ export function LintlyModal({
     }
   }, [isVisible, onClose]);
 
-  // Reset custom instruction when modal closes
+  // Clear custom prompts so stale instructions don't leak into later runs.
   useEffect(() => {
     if (!isVisible) {
       setCustomInstruction("");
     }
   }, [isVisible]);
 
-  // Adjust position to keep modal in viewport - MUST be before early return
+  // Compute bounds before any early return to keep hook order stable.
   const adjustedPosition = useMemo(() => {
     const modalWidth = 560;
     const modalHeight = 380;
@@ -71,7 +71,6 @@ export function LintlyModal({
     let x = position.x;
     let y = position.y;
 
-    // Adjust horizontal position
     if (x + modalWidth > window.innerWidth - margin) {
       x = window.innerWidth - modalWidth - margin;
     }
@@ -79,7 +78,6 @@ export function LintlyModal({
       x = margin;
     }
 
-    // Adjust vertical position
     if (y + modalHeight > window.innerHeight - margin) {
       y = window.innerHeight - modalHeight - margin;
     }
@@ -90,24 +88,21 @@ export function LintlyModal({
     return { x, y };
   }, [position]);
 
-  // Early return AFTER all hooks
+  // Avoid conditional hooks.
   if (!isVisible) return null;
 
   const issues: Issue[] = result && typeof result === "object" ? result.issues : [];
 
-  // Show sourceText (with errors) when we have issues to highlight
-  // Show corrected_text only when all issues are fixed (issues.length === 0)
-  // For non-ANALYZE results (string), show the result directly
+  // Keep source text while issues remain so highlights stay aligned.
   const displayText =
     typeof result === "string"
       ? result
       : issues.length > 0
-        ? sourceText  // Show original text with errors highlighted
+        ? sourceText
         : result?.corrected_text || sourceText;
 
-  // Calculate word count and read time
   const wordCount = displayText.trim().split(/\s+/).filter(Boolean).length;
-  const readTime = Math.max(1, Math.ceil(wordCount / 200) * 60); // in seconds
+  const readTimeSeconds = Math.max(1, Math.ceil(wordCount / 200) * 60);
 
   const handleModalMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -121,7 +116,6 @@ export function LintlyModal({
 
   return (
     <>
-      {/* Ambient Glows - Subtle cyan/teal */}
       <div
         className="ambient-glow-indigo"
         style={{
@@ -137,7 +131,6 @@ export function LintlyModal({
         }}
       />
 
-      {/* Main Modal Container - Clean white card with soft shadow */}
       <div
         ref={modalRef}
         onMouseDown={handleModalMouseDown}
@@ -149,16 +142,13 @@ export function LintlyModal({
         }}
         className="w-[560px] h-[380px] bg-background rounded-2xl shadow-soft flex overflow-hidden animate-in border border-border/40 ring-1 ring-black/5 dark:ring-white/5"
       >
-        {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 bg-background relative rounded-2xl overflow-hidden">
-          {/* Header */}
           <ModalHeader
             issues={issues}
             tone={tone}
             onToneChange={onToneChange}
           />
 
-          {/* Text Surface */}
           <TextSurface
             text={displayText}
             issues={issues}
@@ -167,7 +157,6 @@ export function LintlyModal({
             isLoading={isLoading}
           />
 
-          {/* Issues Action Bar - Only show when there are issues */}
           {issues.length > 0 && (
             <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
@@ -185,13 +174,12 @@ export function LintlyModal({
             </div>
           )}
 
-          {/* Bottom Input */}
           <BottomInput
             value={customInstruction}
             onChange={setCustomInstruction}
             onSubmit={handleSubmit}
             wordCount={wordCount}
-            readTime={readTime}
+            readTime={readTimeSeconds}
             onReset={onReset}
             onCopy={onCopy}
             isLoading={isLoading}

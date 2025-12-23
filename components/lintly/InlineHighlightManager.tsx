@@ -12,30 +12,28 @@ function getHealthDotColor(issueCount: number): string {
 }
 
 interface InlineHighlightManagerProps {
-  /** Whether inline highlighting is enabled */
+  /** Allow parent UI to pause analysis when another surface is active. */
   isEnabled?: boolean;
-  /** Minimum text length before analysis runs */
+  /** Avoid noisy analysis on tiny snippets. */
   minTextLength?: number;
-  /** Debounce delay in milliseconds */
+  /** Reduce churn while the user is still typing. */
   debounceMs?: number;
 }
 
 /**
- * Main orchestrator component for inline text highlighting
+ * Centralizes observation and analysis so overlays stay in sync.
  */
 export function InlineHighlightManager({
   isEnabled = true,
   minTextLength = 10,
   debounceMs = 400,
 }: InlineHighlightManagerProps) {
-  // Track active input element and text
   const { activeElement, text, isTyping, elementRect, charDelta, changePosition } = useInputObserver({
     enabled: isEnabled,
     minTextLength,
     debounceMs,
   });
 
-  // Manage analysis state
   const {
     state: analysisState,
     analyze,
@@ -44,11 +42,10 @@ export function InlineHighlightManager({
     reanalyzeSentence,
   } = useInlineAnalysis({ minTextLength });
 
-  // Track previous element to detect element switches
+  // Avoid carrying issues across unrelated inputs.
   const prevElementRef = useRef<HTMLElement | null>(null);
   const skipNextAnalyzeRef = useRef(false);
 
-  // Track indicator anchor (bottom-right of element)
   const indicatorPosition = useMemo(() => {
     if (!elementRect || !activeElement) return null;
     const style = window.getComputedStyle(activeElement);
@@ -71,7 +68,6 @@ export function InlineHighlightManager({
     };
   }, [activeElement, elementRect]);
 
-  // Clear results when element changes to a DIFFERENT element
   useEffect(() => {
     const prevElement = prevElementRef.current;
     if (activeElement !== prevElement) {
@@ -82,7 +78,6 @@ export function InlineHighlightManager({
     }
   }, [activeElement, clearResult]);
 
-  // Run analysis when text changes (after debounce)
   useEffect(() => {
     if (!isEnabled || !activeElement || isTyping) {
       return;
@@ -100,8 +95,7 @@ export function InlineHighlightManager({
     }
   }, [isEnabled, activeElement, text, isTyping, minTextLength, analyze, clearResult]);
 
-  // Handle when a fix is applied - Grammarly style: just remove, don't re-analyze
-  // Re-analysis only happens when user types new text
+  // Keep idle typing fast by removing fixed issues without full re-analysis.
   const handleIssueFixed = useCallback(
     async ({ issue, sentenceAnchor, sentenceIssues }: IssueFixContext) => {
       console.log("[Lintly] Fix applied:", issue.original, "→", issue.suggestion);
@@ -130,21 +124,18 @@ export function InlineHighlightManager({
     [activeElement, removeIssue, reanalyzeSentence]
   );
 
-  // Don't render if disabled or no active element
   if (!isEnabled || !activeElement) {
     return null;
   }
 
   const issueCount = analysisState.issues.length;
   const healthDotColor = getHealthDotColor(issueCount);
-  // Show highlights even during analysis (keep existing ones visible)
   const showHighlights = issueCount > 0;
   const isLoading = analysisState.isAnalyzing && issueCount === 0;
   const badgeColor = isLoading ? "bg-slate-500" : healthDotColor;
 
   return (
     <>
-      {/* Issue count indicator - always show when focused */}
       {indicatorPosition && (
         <div
           className="lintly-inline-indicator"
@@ -170,7 +161,6 @@ export function InlineHighlightManager({
         </div>
       )}
 
-      {/* Highlight overlay when we have issues */}
       {showHighlights && (
         <HighlightOverlay
           targetElement={activeElement}

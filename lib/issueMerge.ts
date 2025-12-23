@@ -28,8 +28,20 @@ export function mergeIssuesForSentence(
 
   const sentenceText = fullText.slice(sentenceRange.coreStart, sentenceRange.coreEnd);
   const sentencePositions = getIssuePositions(sentenceText, sentenceIssues);
+  const adjustedByIssue = new Map<Issue, Issue>();
+  for (const issue of sentenceIssues) {
+    if (Number.isInteger(issue.start) && Number.isInteger(issue.end)) {
+      adjustedByIssue.set(issue, {
+        ...issue,
+        start: (issue.start as number) + sentenceRange.coreStart,
+        end: (issue.end as number) + sentenceRange.coreStart,
+      });
+    } else {
+      adjustedByIssue.set(issue, issue);
+    }
+  }
   const incoming = sentencePositions.map((pos, index) => ({
-    issue: pos.issue,
+    issue: adjustedByIssue.get(pos.issue) ?? pos.issue,
     start: pos.start >= 0 ? sentenceRange.coreStart + pos.start : LARGE_INDEX,
     order: existingPositions.length + index,
   }));

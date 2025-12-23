@@ -1,113 +1,20 @@
-import { useReducer, useEffect, useCallback, useMemo, useRef } from "react";
+import { useEffect, useCallback, useMemo, useRef } from "react";
+import { useAtom } from "jotai";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
 import { InlineHighlightManager } from "@/components/lintly/InlineHighlightManager";
 import { getSelectionRect, type SelectionRect } from "@/lib/textPositioning";
-import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
+import type { Action, AnalyzeResult, Issue, ProcessResponse } from "@/lib/types";
+import { appStateAtom } from "@/lib/state/lintlyAppState";
 import {
   applyIssuesToSentence,
   buildIssueSentenceContexts,
   findSentenceRangeAt,
   getSentenceRanges,
   groupIssueContextsBySentence,
+  type SentenceRange,
 } from "@/lib/sentences";
 import { mergeIssuesForSentence } from "@/lib/issueMerge";
-
-interface State {
-  isVisible: boolean;
-  isLoading: boolean;
-  sourceText: string;
-  originalSourceText: string;
-  tone: Tone;
-  action: Action;
-  result: string | AnalyzeResult | null;
-  originalResult: string | AnalyzeResult | null;
-  toolbarPosition: { x: number; y: number } | null;
-  modalPosition: { x: number; y: number };
-  selectionRect: SelectionRect | null;
-  error: string | null;
-}
-
-type AppAction =
-  | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: boolean }
-  | { type: "HIDE_MODAL" }
-  | { type: "SET_LOADING"; loading: boolean }
-  | { type: "SET_RESULT"; result: string | AnalyzeResult }
-  | { type: "SET_ERROR"; error: string }
-  | { type: "SET_SOURCE_TEXT"; text: string }
-  | { type: "SET_TONE"; tone: Tone }
-  | { type: "SET_ACTION"; action: Action }
-  | { type: "SHOW_TOOLBAR"; position: { x: number; y: number }; selectionRect: SelectionRect }
-  | { type: "HIDE_TOOLBAR" }
-  | { type: "RESET" };
-
-const initialState: State = {
-  isVisible: false,
-  isLoading: false,
-  sourceText: "",
-  originalSourceText: "",
-  tone: "professional",
-  action: "ANALYZE",
-  result: null,
-  originalResult: null,
-  toolbarPosition: null,
-  modalPosition: { x: 100, y: 100 },
-  selectionRect: null,
-  error: null,
-};
-
-function reducer(state: State, action: AppAction): State {
-  switch (action.type) {
-    case "SHOW_MODAL":
-      return {
-        ...state,
-        isVisible: true,
-        sourceText: action.text,
-        originalSourceText: action.text,
-        result: null,
-        originalResult: null,
-        toolbarPosition: null,
-        modalPosition: action.position,
-        action: "ANALYZE",
-        isLoading: !!action.autoRun,
-      };
-    case "HIDE_MODAL":
-      return { ...state, isVisible: false, result: null, originalResult: null, selectionRect: null };
-    case "SET_LOADING":
-      return { ...state, isLoading: action.loading };
-    case "SET_RESULT":
-      // Store as original only if this is the first result (from initial ANALYZE)
-      const isFirstResult = state.originalResult === null;
-      return {
-        ...state,
-        result: action.result,
-        originalResult: isFirstResult ? action.result : state.originalResult,
-        isLoading: false,
-      };
-    case "SET_ERROR":
-      return { ...state, error: action.error, isLoading: false };
-    case "SET_SOURCE_TEXT":
-      return { ...state, sourceText: action.text };
-    case "SET_TONE":
-      return { ...state, tone: action.tone };
-    case "SET_ACTION":
-      return { ...state, action: action.action };
-    case "SHOW_TOOLBAR":
-      return { ...state, toolbarPosition: action.position, selectionRect: action.selectionRect };
-    case "HIDE_TOOLBAR":
-      return { ...state, toolbarPosition: null, selectionRect: null };
-    case "RESET":
-      return {
-        ...state,
-        sourceText: state.originalSourceText,
-        result: state.originalResult,
-        isLoading: false,
-        error: null,
-      };
-    default:
-      return state;
-  }
-}
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const modalWidth = 560;
@@ -115,16 +22,13 @@ function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const margin = 16;
   const gap = 8;
 
-  // Position below selection, aligned to left of selection
   let x = rect.left;
   let y = rect.bottom + gap;
 
-  // If not enough space below, position above
   if (y + modalHeight > window.innerHeight - margin) {
     y = rect.top - modalHeight - gap;
   }
 
-  // Adjust horizontal position
   if (x + modalWidth > window.innerWidth - margin) {
     x = window.innerWidth - modalWidth - margin;
   }
@@ -132,7 +36,6 @@ function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
     x = margin;
   }
 
-  // Keep within vertical bounds
   if (y < margin) {
     y = margin;
   }
@@ -145,16 +48,13 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
   const toolbarHeight = 28;
   const gap = 8;
 
-  // Position above the selection, centered horizontally
   let x = rect.left + (rect.right - rect.left) / 2 - toolbarWidth / 2;
   let y = rect.top - toolbarHeight - gap;
 
-  // If not enough space above, position below
   if (y < 16) {
     y = rect.bottom + gap;
   }
 
-  // Keep within horizontal bounds
   if (x + toolbarWidth > window.innerWidth - 16) {
     x = window.innerWidth - toolbarWidth - 16;
   }
@@ -162,7 +62,6 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
     x = 16;
   }
 
-  // Keep within vertical bounds
   if (y + toolbarHeight > window.innerHeight - 16) {
     y = window.innerHeight - toolbarHeight - 16;
   }
@@ -171,7 +70,7 @@ function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number }
 }
 
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useAtom(appStateAtom);
   const sentenceAnalyzeIdRef = useRef(0);
 
   const processText = useCallback(
@@ -221,7 +120,7 @@ export default function App() {
   const reanalyzeSentenceRange = useCallback(
     async (
       newText: string,
-      sentenceRange: { coreStart: number; coreEnd: number; coreText: string },
+      sentenceRange: SentenceRange,
       baseIssues: Issue[]
     ) => {
       const currentId = ++sentenceAnalyzeIdRef.current;
@@ -410,14 +309,12 @@ export default function App() {
       return;
     }
 
-    // Apply all fixes to the source text
     let newText = state.sourceText;
     for (const issue of state.result.issues) {
       newText = newText.replace(issue.original, issue.suggestion);
     }
     dispatch({ type: "SET_SOURCE_TEXT", text: newText });
 
-    // Clear all issues
     dispatch({
       type: "SET_RESULT",
       result: {
@@ -434,7 +331,6 @@ export default function App() {
     [processText]
   );
 
-  // Handle toolbar open - opens modal and auto-runs ANALYZE
   const handleToolbarOpen = useCallback(() => {
     const activeElement = document.activeElement;
     let text = "";
@@ -454,21 +350,19 @@ export default function App() {
     }
   }, [state.selectionRect]);
 
-  // Auto-run ANALYZE when modal opens with autoRun flag
+  // Auto-run reduces friction for selection-driven flows.
   useEffect(() => {
     if (state.isVisible && state.isLoading && state.sourceText && !state.result) {
       processText("ANALYZE");
     }
   }, [state.isVisible, state.isLoading, state.sourceText, state.result, processText]);
 
-  // Debug: Log when app mounts
   useEffect(() => {
     console.log("[Lintly] Extension loaded successfully");
   }, []);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      // Changed shortcut to Ctrl+Shift+L (or Cmd+Shift+L on Mac)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
         console.log("[Lintly] Shortcut triggered");
@@ -505,7 +399,6 @@ export default function App() {
 
       const activeElement = document.activeElement;
 
-      // Get selected text - handle both textarea and regular selections
       let text = "";
       if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
         const start = activeElement.selectionStart ?? 0;
@@ -520,10 +413,8 @@ export default function App() {
         return;
       }
 
-      // Get selection rect
       let rect = getSelectionRect(activeElement);
 
-      // Fallback: use mouse position if rect failed
       if (!rect || (rect.top === 0 && rect.left === 0)) {
         console.log("[Lintly] Using mouse position as fallback");
         rect = {
@@ -559,7 +450,7 @@ export default function App() {
     };
   }, [state.isVisible, state.toolbarPosition]);
 
-  // Disable inline highlights when modal or toolbar is visible
+  // Avoid double UI when modal or toolbar is active.
   const inlineHighlightsEnabled = useMemo(
     () => !state.isVisible && !state.toolbarPosition,
     [state.isVisible, state.toolbarPosition]
@@ -567,7 +458,6 @@ export default function App() {
 
   return (
     <>
-      {/* Inline highlighting for real-time analysis while typing */}
       <InlineHighlightManager isEnabled={inlineHighlightsEnabled} />
 
       {state.toolbarPosition && (

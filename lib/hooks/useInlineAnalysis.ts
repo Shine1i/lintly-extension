@@ -18,15 +18,12 @@ interface UseInlineAnalysisReturn {
   state: InlineAnalysisState;
   analyze: (text: string) => Promise<void>;
   clearResult: () => void;
-  /** Remove a single issue from the list without re-analyzing */
+  /** Keep UI responsive by removing a single issue without a round-trip. */
   removeIssue: (issue: Issue) => void;
-  /** Re-analyze a specific sentence and merge issues */
+  /** Re-scan only the touched sentence to avoid full-document latency. */
   reanalyzeSentence: (fullText: string, sentenceRange: SentenceRange) => Promise<void>;
 }
 
-/**
- * Hook for managing inline text analysis
- */
 export function useInlineAnalysis(
   options: UseInlineAnalysisOptions = {}
 ): UseInlineAnalysisReturn {
@@ -44,7 +41,6 @@ export function useInlineAnalysis(
   const sentenceAnalyzeIdRef = useRef(0);
 
   const analyze = useCallback(async (text: string) => {
-    // Skip if text is too short
     if (!text || text.trim().length < minTextLength) {
       setState((prev) => ({
         ...prev,
@@ -55,12 +51,10 @@ export function useInlineAnalysis(
       return;
     }
 
-    // Skip if text is the same as last analyzed (and we have results or no error)
     if (text === state.lastAnalyzedText && !state.error) {
       return;
     }
 
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -72,7 +66,6 @@ export function useInlineAnalysis(
       ...prev,
       isAnalyzing: true,
       error: null,
-      // Keep existing issues while analyzing (don't clear them)
     }));
 
     try {
@@ -85,7 +78,6 @@ export function useInlineAnalysis(
         },
       });
 
-      // Check if this is still the current request
       if (currentId !== analyzeIdRef.current) {
         return;
       }
@@ -107,12 +99,10 @@ export function useInlineAnalysis(
         }));
       }
     } catch (err) {
-      // Check if this is still the current request
       if (currentId !== analyzeIdRef.current) {
         return;
       }
 
-      // Ignore abort errors
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
@@ -127,7 +117,6 @@ export function useInlineAnalysis(
   }, [minTextLength, state.lastAnalyzedText, state.error]);
 
   const clearResult = useCallback(() => {
-    // Cancel any pending request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -142,8 +131,6 @@ export function useInlineAnalysis(
     });
   }, []);
 
-  // Remove a single issue by content match (not reference)
-  // Does NOT trigger re-analysis - that only happens when user types
   const removeIssue = useCallback((issue: Issue) => {
     setState((prev) => ({
       ...prev,
@@ -158,7 +145,6 @@ export function useInlineAnalysis(
         }
         return [...prev.issues.slice(0, index), ...prev.issues.slice(index + 1)];
       })(),
-      // Keep lastAnalyzedText so we don't re-analyze until user types
     }));
   }, []);
 

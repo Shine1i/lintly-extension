@@ -54,7 +54,6 @@ function getIssueTypeLabel(type: string): string {
 export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   const healthDotColor = getHealthDotColor(issues.length);
 
-  // Group issues by type
   const issuesByType = issues.reduce(
     (acc, issue) => {
       acc[issue.type] = (acc[issue.type] || 0) + 1;
@@ -68,7 +67,6 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   return (
     <header className="h-12 flex items-center justify-end px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
       <div className="flex items-center gap-2">
-        {/* Tone Selector Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -92,7 +90,6 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Health Indicator Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

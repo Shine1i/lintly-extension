@@ -1,0 +1,130 @@
+import { findAllOccurrences } from "./occurrences";
+import { buildTextNodeRanges, resolveTextRangeNodes } from "./textNodes";
+
+export function applyFixToElement(
+  element: HTMLElement,
+  original: string,
+  suggestion: string,
+  occurrenceIndex: number = 0
+): boolean {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    const currentValue = element.value;
+    const occurrences = findAllOccurrences(currentValue, original);
+
+    if (occurrenceIndex >= occurrences.length) return false;
+
+    const index = occurrences[occurrenceIndex];
+
+    element.focus();
+    element.setSelectionRange(index, index + original.length);
+
+    // Use execCommand so undo stacks behave more naturally.
+    const success = document.execCommand("insertText", false, suggestion);
+    if (!success) {
+      element.value =
+        currentValue.slice(0, index) +
+        suggestion +
+        currentValue.slice(index + original.length);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    return true;
+  }
+
+  if (element.isContentEditable) {
+    const selection = window.getSelection();
+    if (!selection) return false;
+
+    const fullText = element.textContent || "";
+    const occurrences = findAllOccurrences(fullText, original);
+
+    if (occurrenceIndex >= occurrences.length) return false;
+
+    const matchStart = occurrences[occurrenceIndex];
+    const matchEnd = matchStart + original.length;
+
+    const textNodes = buildTextNodeRanges(element);
+    const resolved = resolveTextRangeNodes(textNodes, matchStart, matchEnd);
+    if (!resolved) return false;
+
+    const range = document.createRange();
+    range.setStart(resolved.startNode, resolved.startOffset);
+    range.setEnd(resolved.endNode, resolved.endOffset);
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const success = document.execCommand("insertText", false, suggestion);
+    if (!success) {
+      range.deleteContents();
+      range.insertNode(document.createTextNode(suggestion));
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+export function applyTextRangeToElement(
+  element: HTMLElement,
+  startIndex: number,
+  endIndex: number,
+  replacement: string
+): boolean {
+  if (startIndex >= endIndex) return false;
+
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    const currentValue = element.value;
+    if (startIndex < 0 || startIndex > currentValue.length) return false;
+
+    const safeEnd = Math.min(endIndex, currentValue.length);
+
+    element.focus();
+    element.setSelectionRange(startIndex, safeEnd);
+
+    const success = document.execCommand("insertText", false, replacement);
+    if (!success) {
+      element.value =
+        currentValue.slice(0, startIndex) +
+        replacement +
+        currentValue.slice(safeEnd);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    return true;
+  }
+
+  if (element.isContentEditable) {
+    const fullText = element.textContent || "";
+    if (startIndex < 0 || startIndex > fullText.length) return false;
+
+    const safeEnd = Math.min(endIndex, fullText.length);
+
+    const textNodes = buildTextNodeRanges(element);
+    const resolved = resolveTextRangeNodes(textNodes, startIndex, safeEnd);
+    if (!resolved) return false;
+
+    const selection = window.getSelection();
+    if (!selection) return false;
+
+    const range = document.createRange();
+    range.setStart(resolved.startNode, resolved.startOffset);
+    range.setEnd(resolved.endNode, resolved.endOffset);
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const success = document.execCommand("insertText", false, replacement);
+    if (!success) {
+      range.deleteContents();
+      range.insertNode(document.createTextNode(replacement));
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    return true;
+  }
+
+  return false;
+}

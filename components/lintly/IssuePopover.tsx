@@ -164,7 +164,7 @@ export function IssuePopover({
         onMouseEnter={handlePopoverMouseEnter}
         onMouseLeave={handlePopoverMouseLeave}
         onInteractOutside={(e) => {
-          // In Shadow DOM, treat clicks from same shadow root as "inside"
+          // Shadow-root clicks shouldn't close the popover.
           const target = e.target as Node;
           const root = target.getRootNode?.() as ShadowRoot | Document;
           if (root instanceof ShadowRoot) {
@@ -173,7 +173,6 @@ export function IssuePopover({
           }
         }}
       >
-        {/* Header - Color coded */}
         <div
           className={`flex items-center gap-2 px-4 py-2.5 ${styles.headerBg} border-b ${styles.border}`}
         >
@@ -185,7 +184,6 @@ export function IssuePopover({
           </span>
         </div>
 
-        {/* Body */}
         <div className="p-4">
           {sentenceText && correctedSentence && sentenceText !== correctedSentence && (
             <div className="mb-3">
@@ -226,10 +224,9 @@ export function IssuePopover({
                   {issue.suggestion}
                 </span>
               </div>
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* Explanation (if available) */}
           {issue.explanation && (
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               {issue.explanation}

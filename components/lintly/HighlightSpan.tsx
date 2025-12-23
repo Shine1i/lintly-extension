@@ -71,7 +71,7 @@ function getIssueTypeLabel(type: string): string {
 }
 
 /**
- * Inline issue popover anchored to a highlight rect.
+ * Keep the popover anchored without stealing focus from the input.
  */
 export function HighlightSpan({
   issue,
@@ -103,7 +103,6 @@ export function HighlightSpan({
 
   return (
     <>
-      {/* Popover anchored to the hovered rect */}
       <Popover
         open={isOpen}
         onOpenChange={(open) => {
@@ -128,12 +127,12 @@ export function HighlightSpan({
           align="center"
           onMouseEnter={() => onPopoverHoverChange?.(true)}
           onMouseLeave={() => onPopoverHoverChange?.(false)}
-          // Prevent popover from stealing focus from the textarea
+          // Keep focus on the input so typing doesn't break.
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => {
-            // Don't close on clicks inside shadow DOM
+            // Shadow-root clicks should not dismiss inline UI.
             const target = e.target as Node;
             const root = target.getRootNode?.() as ShadowRoot | Document;
             if (root instanceof ShadowRoot) {
@@ -141,7 +140,6 @@ export function HighlightSpan({
             }
           }}
         >
-          {/* Header - Color coded */}
           <div
             className={`flex items-center gap-2 px-4 py-2.5 ${styles.headerBg} border-b ${styles.border}`}
           >
@@ -153,7 +151,6 @@ export function HighlightSpan({
             </span>
           </div>
 
-          {/* Body */}
           <div className="p-4">
             {sentenceText && correctedSentence && sentenceText !== correctedSentence && (
               <div className="mb-3">
@@ -197,7 +194,6 @@ export function HighlightSpan({
               </div>
             )}
 
-            {/* Explanation (if available) */}
             {issue.explanation && (
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 {issue.explanation}

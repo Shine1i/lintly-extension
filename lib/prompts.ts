@@ -8,6 +8,8 @@ issues: Array of identified issues, where each issue contains:
   category: Specific error type (e.g., verb_tense, subject_verb_agreement, typo, comma_splice)
   severity: How serious the issue is (error|warning|suggestion)
   original: The exact substring from input containing the error (copy exactly, never use "..." or abbreviate)
+  start: 0-based index of original in the input text
+  end: exclusive index (start + original.length)
   suggestion: The corrected text to replace original
   explanation: Brief explanation of why this change improves the text
 

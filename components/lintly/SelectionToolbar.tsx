@@ -23,12 +23,10 @@ export function SelectionToolbar({ position, onOpen }: SelectionToolbarProps) {
       }}
       className="flex items-center gap-2 bg-background border border-border/60 rounded-full shadow-soft p-1.5 pr-3 hover:scale-105 transition-transform duration-300 animate-in"
     >
-      {/* Grip Handle (visual only) */}
       <div className="w-8 h-8 rounded-full bg-secondary/80 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab transition-colors">
         <GripVertical className="w-4 h-4" />
       </div>
 
-      {/* Wand Button - Opens modal with ANALYZE - Purple primary */}
       <Button
         onClick={onOpen}
         onMouseDown={handleMouseDown}

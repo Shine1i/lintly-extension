@@ -125,17 +125,16 @@ export function TextSurface({
 
   useEffect(() => {
     if (isLoading) {
-      // Start loading: show shimmer immediately
+      // Immediate feedback makes the UI feel responsive.
       setShowShimmer(true);
       setIsFadingOut(false);
     } else if (showShimmer) {
-      // Stop loading: trigger fade-out
+      // Fade out so the transition doesn't flash.
       setIsFadingOut(true);
-      // Remove from DOM after animation completes
       const timer = setTimeout(() => {
         setShowShimmer(false);
         setIsFadingOut(false);
-      }, 400); // Match CSS transition duration
+      }, 400);
       return () => clearTimeout(timer);
     }
   }, [isLoading, showShimmer]);
@@ -168,7 +167,6 @@ export function TextSurface({
 
   return (
     <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-5 relative overflow-x-hidden">
-      {/* Shimmer scanning overlay when loading */}
       {showShimmer && (
         <div className={`shimmer-container ${isFadingOut ? "fade-out" : ""}`}>
           <div className="shimmer-bar" />
@@ -176,7 +174,6 @@ export function TextSurface({
       )}
 
       <div className="max-w-2xl mx-auto">
-        {/* Text Content */}
         <p className="text-[15px] text-foreground leading-[1.85] font-normal">
           {sentenceBlocks.map((block) => {
             const isActive = activeSentenceIndex === block.sentenceIndex;

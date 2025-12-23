@@ -1,6 +1,8 @@
 import { createRoot } from "react-dom/client";
+import { Provider as JotaiProvider } from "jotai";
 import App from "./App";
 import { ShadowDOMProvider } from "@/lib/ShadowDOMContext";
+import { cleanupMirrorCache, setMirrorHost } from "@/lib/textPositioning";
 import "./styles.css";
 
 export default defineContentScript({
@@ -16,10 +18,13 @@ export default defineContentScript({
       anchor: "body",
       onMount: (container) => {
         console.log("[Lintly] Mounting React app...");
+        setMirrorHost(container);
         const root = createRoot(container);
         root.render(
           <ShadowDOMProvider value={container}>
-            <App />
+            <JotaiProvider>
+              <App />
+            </JotaiProvider>
           </ShadowDOMProvider>
         );
         console.log("[Lintly] React app rendered");
@@ -27,6 +32,8 @@ export default defineContentScript({
       },
       onRemove: (root) => {
         root?.unmount();
+        setMirrorHost(null);
+        cleanupMirrorCache();
       },
     });
 
