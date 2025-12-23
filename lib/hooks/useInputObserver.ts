@@ -26,6 +26,9 @@ const DEFAULT_OPTIONS: Required<InputObserverOptions> = {
   enabled: true,
 };
 
+const MAX_SHIFT_CHARS = 50;
+const MAX_SYNC_DELTA_LENGTH = 4000;
+
 const INITIAL_STATE: InputObserverState = {
   activeElement: null,
   text: "",
@@ -63,6 +66,18 @@ function shouldExclude(element: HTMLElement, excludeSelectors: string[]): boolea
   return false;
 }
 
+function getSelectionLength(element: HTMLElement): number | null {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    const start = element.selectionStart ?? 0;
+    const end = element.selectionEnd ?? 0;
+    return Math.max(0, end - start);
+  }
+
+  const selection = window.getSelection();
+  if (!selection) return null;
+  return selection.isCollapsed ? 0 : null;
+}
+
 function getChangePosition(element: HTMLElement, charDelta: number): number {
   if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
     let position = element.selectionStart ?? 0;
@@ -73,6 +88,19 @@ function getChangePosition(element: HTMLElement, charDelta: number): number {
   }
 
   return 0;
+}
+
+function getElementTextLength(element: HTMLElement): number | null {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    return element.value.length;
+  }
+
+  if (element.isContentEditable) {
+    const text = element.textContent;
+    return text ? text.length : 0;
+  }
+
+  return null;
 }
 
 function readElementSnapshot(element: HTMLElement): { text: string; rect: DOMRect } {
@@ -88,15 +116,41 @@ function isShadowRootNode(node: Node | null): boolean {
   return root instanceof ShadowRoot;
 }
 
+type PendingInputInfo = {
+  target: EventTarget | null;
+  inputType: string;
+  dataLength: number | null;
+  selectionLength: number | null;
+};
+
+function inferCharDelta(pending: PendingInputInfo | null): number | null {
+  if (!pending) return null;
+
+  const { inputType, dataLength, selectionLength } = pending;
+  if (inputType.startsWith("insert")) {
+    if (dataLength == null || selectionLength == null) return null;
+    return dataLength - selectionLength;
+  }
+
+  if (inputType.startsWith("delete")) {
+    if (selectionLength == null) return null;
+    return selectionLength > 0 ? -selectionLength : -1;
+  }
+
+  return null;
+}
+
 export function useInputObserver(options?: InputObserverOptions): InputObserverState {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const [state, setState] = useState<InputObserverState>(INITIAL_STATE);
 
   const lastStableTextRef = useRef<string>("");
+  const lastStableLengthRef = useRef<number>(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeElementRef = useRef<HTMLElement | null>(null);
   const isTypingRef = useRef(false);
   const isSelectingRef = useRef(false);
+  const pendingInputRef = useRef<PendingInputInfo | null>(null);
 
   const clearDebounce = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -111,6 +165,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
 
     const { text, rect } = readElementSnapshot(element);
     lastStableTextRef.current = text;
+    lastStableLengthRef.current = text.length;
     isTypingRef.current = false;
     setState((prev) => ({
       ...prev,
@@ -127,6 +182,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
       activeElementRef.current = element;
       const { text, rect } = readElementSnapshot(element);
       lastStableTextRef.current = text;
+      lastStableLengthRef.current = text.length;
       setState((prev) => ({
         ...prev,
         activeElement: element,
@@ -145,6 +201,27 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     debounceTimerRef.current = setTimeout(commitStableText, opts.debounceMs);
   }, [clearDebounce, commitStableText, opts.debounceMs]);
 
+  const handleBeforeInput = useCallback(
+    (e: Event) => {
+      if (!opts.enabled || isSelectingRef.current) return;
+
+      const target = e.target;
+      if (!isValidEditableElement(target as Element)) return;
+
+      const element = target as HTMLElement;
+      if (shouldExclude(element, opts.excludeSelectors)) return;
+
+      const inputEvent = e as InputEvent;
+      pendingInputRef.current = {
+        target: e.target,
+        inputType: inputEvent.inputType || "",
+        dataLength: typeof inputEvent.data === "string" ? inputEvent.data.length : null,
+        selectionLength: getSelectionLength(element),
+      };
+    },
+    [opts.enabled, opts.excludeSelectors]
+  );
+
   const handleInput = useCallback(
     (e: Event) => {
       if (!opts.enabled || isSelectingRef.current) return;
@@ -159,9 +236,19 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
         setActiveElement(element);
       }
 
-      const currentText = getElementText(element);
-      const stableText = lastStableTextRef.current;
-      const charDelta = currentText.length - stableText.length;
+      const stableLength = lastStableLengthRef.current;
+      const pending = pendingInputRef.current?.target === element ? pendingInputRef.current : null;
+      pendingInputRef.current = null;
+
+      let charDelta = inferCharDelta(pending);
+      if (charDelta === null) {
+        const canSyncRead = stableLength <= MAX_SYNC_DELTA_LENGTH;
+        const currentLength = canSyncRead ? getElementTextLength(element) : null;
+        charDelta = currentLength != null ? currentLength - stableLength : 0;
+      }
+      if (Math.abs(charDelta) > MAX_SHIFT_CHARS) {
+        charDelta = 0;
+      }
       const changePosition = getChangePosition(element, charDelta);
 
       if (!isTypingRef.current) {
@@ -260,6 +347,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
   useEffect(() => {
     if (!opts.enabled) return;
 
+    document.addEventListener("beforeinput", handleBeforeInput, true);
     document.addEventListener("input", handleInput, true);
     document.addEventListener("focusin", handleFocusIn, true);
     document.addEventListener("focusout", handleFocusOut, true);
@@ -271,6 +359,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     document.addEventListener("paste", handleCutPaste, true);
 
     return () => {
+      document.removeEventListener("beforeinput", handleBeforeInput, true);
       document.removeEventListener("input", handleInput, true);
       document.removeEventListener("focusin", handleFocusIn, true);
       document.removeEventListener("focusout", handleFocusOut, true);
@@ -282,6 +371,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     };
   }, [
     opts.enabled,
+    handleBeforeInput,
     handleInput,
     handleFocusIn,
     handleFocusOut,

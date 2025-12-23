@@ -164,6 +164,7 @@ export function InlineHighlightManager({
       {showHighlights && (
         <HighlightOverlay
           targetElement={activeElement}
+          elementText={text}
           issues={analysisState.issues}
           onIssueFixed={handleIssueFixed}
           isTyping={isTyping}

@@ -52,6 +52,8 @@ interface RectCacheEntry {
 
 interface HighlightOverlayProps {
   targetElement: HTMLElement;
+  /** Stable text snapshot to avoid full DOM reads while typing. */
+  elementText?: string;
   issues: Issue[];
   onIssueFixed?: (context: IssueFixContext) => void;
   /** Keep highlights responsive while typing without reflow-heavy recomputes. */
@@ -64,6 +66,7 @@ interface HighlightOverlayProps {
 
 export function HighlightOverlay({
   targetElement,
+  elementText,
   issues,
   onIssueFixed,
   isTyping = false,
@@ -71,12 +74,12 @@ export function HighlightOverlay({
   changePosition = 0,
 }: HighlightOverlayProps) {
   const { scrollPosition, elementPosition, layoutVersion } = useScrollSync(targetElement);
-  const elementText = getElementText(targetElement);
+  const resolvedText = elementText ?? getElementText(targetElement);
   const { issueIdByIssue, issueById } = useIssueIdMap(issues);
 
   const { issueContexts } = useMemo(
-    () => buildIssueSentenceContexts(elementText, issues),
-    [elementText, issues]
+    () => buildIssueSentenceContexts(resolvedText, issues),
+    [resolvedText, issues]
   );
   const contextsBySentence = useMemo(
     () => groupIssueContextsBySentence(issueContexts),
@@ -96,7 +99,7 @@ export function HighlightOverlay({
     targetElement,
     issues,
     issueIdByIssue,
-    elementText,
+    elementText: resolvedText,
     isTyping,
     charDelta,
     changePosition,
@@ -114,7 +117,7 @@ export function HighlightOverlay({
     setActiveSentenceRange(null);
     setActiveSentenceRects([]);
     sentenceRectsCacheRef.current = new Map();
-  }, [issues, elementText, targetElement]);
+  }, [issues, resolvedText, targetElement]);
 
   const setActiveSentenceForIssue = useCallback(
     (issue: Issue | null) => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Issue } from "@/lib/types";
 import type { ElementPosition, ScrollPosition } from "@/lib/hooks/useScrollSync";
-import { getIssuePositions, getIssueRects } from "@/lib/textPositioning";
+import { getIssuePositions, getTextRangeRects } from "@/lib/textPositioning";
 import {
   OCCLUSION_RECT_LIMIT,
   OCCLUSION_SCROLL_THRESHOLD,
@@ -36,6 +36,9 @@ interface UseIssueRectsResult {
   removeIssueRects: (issueIds: Iterable<string>) => void;
 }
 
+const RECT_TIME_BUDGET_MS = 6;
+const RECT_MAX_PER_FRAME = 12;
+
 export function useIssueRects({
   targetElement,
   issues,
@@ -60,6 +63,8 @@ export function useIssueRects({
     { scrollTop: 0, scrollLeft: 0, layoutVersion: -1 }
   );
   const overflowAncestorsRef = useRef<HTMLElement[]>([]);
+  const rectMeasureIdRef = useRef(0);
+  const rectMeasureRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!targetElement) {
@@ -122,8 +127,15 @@ export function useIssueRects({
       return;
     }
 
-    if (isTyping && issueLocalRects.size > 0) {
+    if (isTyping) {
       return;
+    }
+
+    rectMeasureIdRef.current += 1;
+    const measureId = rectMeasureIdRef.current;
+    if (rectMeasureRafRef.current !== null) {
+      cancelAnimationFrame(rectMeasureRafRef.current);
+      rectMeasureRafRef.current = null;
     }
 
     const elementRect = targetElement.getBoundingClientRect();
@@ -134,15 +146,89 @@ export function useIssueRects({
       scrollLeft: baseScrollLeft,
     };
 
-    const rectsMap = getIssueRects(targetElement, issues);
-    const stringKeyedRects = new Map<string, RectBox[]>();
-    for (const [issue, rects] of rectsMap.entries()) {
-      const issueId = issueIdByIssue.get(issue);
+    const positions = getIssuePositions(elementText, issues);
+    const pending: Array<{ issueId: string; start: number; end: number }> = [];
+    const validIssueIds = new Set<string>();
+
+    for (const pos of positions) {
+      if (pos.start < 0 || pos.end <= pos.start) continue;
+      const issueId = issueIdByIssue.get(pos.issue);
       if (!issueId) continue;
-      stringKeyedRects.set(issueId, toLocalRects(rects, elementRect));
+      validIssueIds.add(issueId);
+      pending.push({ issueId, start: pos.start, end: pos.end });
     }
-    setIssueLocalRects(stringKeyedRects);
-  }, [targetElement, issues, isTyping, issueIdByIssue, layoutVersion]);
+
+    if (pending.length === 0) {
+      setIssueLocalRects(new Map());
+      return;
+    }
+
+    setIssueLocalRects((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const key of next.keys()) {
+        if (!validIssueIds.has(key)) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    const processBatch = () => {
+      if (measureId !== rectMeasureIdRef.current) {
+        return;
+      }
+
+      const start = performance.now();
+      const batchRects = new Map<string, RectBox[]>();
+      let processed = 0;
+
+      while (
+        pending.length > 0 &&
+        processed < RECT_MAX_PER_FRAME &&
+        performance.now() - start < RECT_TIME_BUDGET_MS
+      ) {
+        const task = pending.shift();
+        if (!task) break;
+        const rects = getTextRangeRects(
+          targetElement,
+          task.start,
+          task.end,
+          elementRect
+        );
+        if (rects.length > 0) {
+          batchRects.set(task.issueId, toLocalRects(rects, elementRect));
+        }
+        processed += 1;
+      }
+
+      if (batchRects.size > 0) {
+        setIssueLocalRects((prev) => {
+          const next = new Map(prev);
+          for (const [issueId, rects] of batchRects.entries()) {
+            next.set(issueId, rects);
+          }
+          return next;
+        });
+      }
+
+      if (pending.length > 0) {
+        rectMeasureRafRef.current = requestAnimationFrame(processBatch);
+      } else {
+        rectMeasureRafRef.current = null;
+      }
+    };
+
+    processBatch();
+
+    return () => {
+      if (rectMeasureRafRef.current !== null) {
+        cancelAnimationFrame(rectMeasureRafRef.current);
+        rectMeasureRafRef.current = null;
+      }
+    };
+  }, [targetElement, issues, elementText, isTyping, issueIdByIssue, layoutVersion]);
 
   const shiftedLocalRects = useMemo(() => {
     if (!isTyping || charDelta === 0 || issueLocalRects.size === 0) {
