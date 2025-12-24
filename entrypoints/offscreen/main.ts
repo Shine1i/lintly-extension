@@ -59,7 +59,7 @@ async function callAPI(
         { role: "system", content: systemPrompt },
         { role: "user", content: userText },
       ],
-      temperature: 0,
+      temperature: 0.2,
       // temperature: 0.3,
       min_p: 0.15,
       repetition_penalty: 1.05,
