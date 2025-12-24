@@ -8,15 +8,13 @@ import type {
 } from "@/lib/types";
 import {
   ANALYZE_SYSTEM,
-  SUMMARIZE_SYSTEM,
-  PARAPHRASE_SYSTEM,
   CUSTOM_SYSTEM,
   TONE_PROMPTS,
 } from "@/lib/prompts";
 import { assignIssueOffsetsFromCorrection } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "moogin/typix-sft";
+const MODEL = "moogin/typix-sft-exp3";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
 
@@ -85,9 +83,8 @@ function getSystemPrompt(
     case "ANALYZE":
       return ANALYZE_SYSTEM;
     case "SUMMARIZE":
-      return SUMMARIZE_SYSTEM;
     case "PARAPHRASE":
-      return PARAPHRASE_SYSTEM;
+      return CUSTOM_SYSTEM;
     case "TONE_REWRITE":
       return options?.tone ? TONE_PROMPTS[options.tone] : TONE_PROMPTS.formal;
     case "CUSTOM":
@@ -106,7 +103,15 @@ async function processText(
 ): Promise<string | AnalyzeResult> {
   console.log("[Lintly API] Processing action:", action);
   const systemPrompt = getSystemPrompt(action, options);
-  const response = await callAPI(systemPrompt, text);
+
+  let userMessage = text;
+  if (action === "SUMMARIZE") {
+    userMessage = `Summarize this text concisely in up to three sentences:\n\n${text}`;
+  } else if (action === "PARAPHRASE") {
+    userMessage = `Paraphrase this text while preserving the meaning:\n\n${text}`;
+  }
+
+  const response = await callAPI(systemPrompt, userMessage);
 
   console.log(typeof response);
 

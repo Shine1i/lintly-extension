@@ -14,12 +14,6 @@ Severity guidelines:
 - error: Objective grammar, spelling, punctuation, capitalization, or confused-word errors
 - warning: Redundancy only`;
 
-export const SUMMARIZE_SYSTEM =
-  "Provide a concise, objective summary of the input text in up to three sentences, focusing on key actions and intentions without using second or third person pronouns. Output only the summary.";
-
-export const PARAPHRASE_SYSTEM =
-  "Rewrite the text using different words while preserving the meaning. Output only the paraphrased text.";
-
 export const CUSTOM_SYSTEM =
   "You are an AI rewriting assistant. You will be provided with a text and you need to rewrite it according to the user's instructions.";
 
