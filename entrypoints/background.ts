@@ -1,4 +1,9 @@
 import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
+import { ExtensionQueryClient } from "@/lib/cache";
+
+const queryClient = new ExtensionQueryClient({
+  defaultStaleTime: Infinity, // ML outputs are deterministic
+});
 
 let creating: Promise<void> | null = null;
 
@@ -32,13 +37,25 @@ async function sendToOffscreen(msg: OffscreenMessage) {
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((msg: ProcessRequest, _, respond) => {
     if (msg.type === "PROCESS_TEXT") {
-      sendToOffscreen({
+      const offscreenMsg: OffscreenMessage = {
         target: "offscreen",
         type: "GENERATE",
         action: msg.action,
         text: msg.text,
         options: msg.options,
-      })
+      };
+
+      queryClient
+        .fetch({
+          queryKey: [
+            "model",
+            msg.action,
+            msg.text,
+            msg.options?.tone,
+            msg.options?.customInstruction,
+          ],
+          queryFn: () => sendToOffscreen(offscreenMsg),
+        })
         .then(respond)
         .catch((e) => respond({ success: false, error: String(e) }));
       return true;
