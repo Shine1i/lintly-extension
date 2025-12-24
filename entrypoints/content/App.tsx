@@ -4,7 +4,7 @@ import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
 import { InlineHighlightManager } from "@/components/lintly/InlineHighlightManager";
 import { getSelectionRect, type SelectionRect } from "@/lib/textPositioning";
-import type { Action, AnalyzeResult, Issue, ProcessResponse } from "@/lib/types";
+import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
 import { appStateAtom } from "@/lib/state/lintlyAppState";
 import {
   applyIssuesToSentence,
@@ -45,8 +45,8 @@ function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
 }
 
 function calculateToolbarPosition(rect: SelectionRect): { x: number; y: number } {
-  const toolbarWidth = 60;
-  const toolbarHeight = 28;
+  const toolbarWidth = 280;
+  const toolbarHeight = 36;
   const gap = 8;
 
   let x = rect.left + (rect.right - rect.left) / 2 - toolbarWidth / 2;
@@ -344,7 +344,7 @@ export default function App() {
     [dispatch, processText]
   );
 
-  const handleToolbarOpen = useCallback(() => {
+  const handleToolbarAction = useCallback((action: Action, tone?: Tone) => {
     const activeElement = document.activeElement;
     let text = "";
 
@@ -359,16 +359,16 @@ export default function App() {
     const rect = state.selectionRect || getSelectionRect(activeElement);
     if (text && rect) {
       const position = calculateModalPosition(rect);
-      dispatch({ type: "SHOW_MODAL", text, position, autoRun: true });
+      dispatch({ type: "SHOW_MODAL", text, position, autoRun: true, action, tone });
     }
   }, [dispatch, state.selectionRect]);
 
   // Auto-run reduces friction for selection-driven flows.
   useEffect(() => {
     if (state.isVisible && state.isLoading && state.sourceText && !state.result) {
-      processText("ANALYZE");
+      processText(state.action);
     }
-  }, [state.isVisible, state.isLoading, state.sourceText, state.result, processText]);
+  }, [state.isVisible, state.isLoading, state.sourceText, state.result, state.action, processText]);
 
   useEffect(() => {
     console.log("[Lintly] Extension loaded successfully");
@@ -474,7 +474,7 @@ export default function App() {
       <InlineHighlightManager isEnabled={inlineHighlightsEnabled} />
 
       {state.toolbarPosition && (
-        <SelectionToolbar position={state.toolbarPosition} onOpen={handleToolbarOpen} />
+        <SelectionToolbar position={state.toolbarPosition} onAction={handleToolbarAction} />
       )}
 
       <LintlyModal

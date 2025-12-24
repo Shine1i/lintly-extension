@@ -30,7 +30,7 @@ export interface AppState {
 }
 
 export type AppAction =
-  | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: boolean }
+  | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: boolean; action?: Action; tone?: Tone }
   | { type: "HIDE_MODAL" }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_RESULT"; result: AppResult }
@@ -71,7 +71,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         originalResult: null,
         toolbarPosition: null,
         modalPosition: action.position,
-        action: "ANALYZE",
+        action: action.action ?? "ANALYZE",
+        tone: action.tone ?? state.tone,
         isLoading: !!action.autoRun,
         bulkUndo: null,
       };
