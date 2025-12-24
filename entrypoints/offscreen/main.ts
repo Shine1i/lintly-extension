@@ -14,7 +14,7 @@ import {
 import { assignIssueOffsetsFromCorrection } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "moogin/typix-sft-exp3";
+const MODEL = "moogin/typix-sft-exp2";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
 
