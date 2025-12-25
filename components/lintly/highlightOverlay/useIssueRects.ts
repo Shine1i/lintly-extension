@@ -135,7 +135,7 @@ export function useIssueRects({
     const validIssueIds = new Set<string>();
 
     for (const pos of positions) {
-      if (pos.start < 0 || pos.end <= pos.start) continue;
+      if (pos.start < 0 || pos.end < pos.start) continue;
       const issueId = issueIdByIssue.get(pos.issue);
       if (!issueId) continue;
       validIssueIds.add(issueId);

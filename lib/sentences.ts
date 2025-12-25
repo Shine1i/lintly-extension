@@ -171,7 +171,11 @@ export function buildIssueSentenceContexts(
       continue;
     }
 
-    const sentenceIndex = findSentenceIndexAt(sentenceRanges, pos.start);
+    const anchorIndex =
+      pos.start === pos.end && pos.start === text.length && pos.start > 0
+        ? pos.start - 1
+        : pos.start;
+    const sentenceIndex = findSentenceIndexAt(sentenceRanges, anchorIndex);
     if (sentenceIndex === -1) {
       continue;
     }

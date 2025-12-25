@@ -25,7 +25,7 @@ export function applyBulkIssues(text: string, issues: Issue[]): BulkApplyResult 
   let lastEnd = -1;
 
   for (const pos of sorted) {
-    if (pos.start < 0 || pos.end <= pos.start) {
+    if (pos.start < 0 || pos.end < pos.start) {
       skippedIssues.push(pos.issue);
       continue;
     }

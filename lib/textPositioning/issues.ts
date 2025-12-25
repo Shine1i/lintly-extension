@@ -115,7 +115,7 @@ export function getIssueRects(element: HTMLElement, issues: Issue[]): Map<Issue,
   const positions = getIssuePositions(elementText, issues);
 
   for (const pos of positions) {
-    if (pos.start < 0 || pos.end <= pos.start) continue;
+    if (pos.start < 0 || pos.end < pos.start) continue;
     const rects = getTextRangeRects(element, pos.start, pos.end, elementRect);
     if (rects.length > 0) {
       result.set(pos.issue, rects);

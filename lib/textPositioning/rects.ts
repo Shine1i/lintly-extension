@@ -40,11 +40,29 @@ export function getTextRangeRects(
   endIndex: number,
   elementRect?: DOMRectReadOnly
 ): DOMRect[] {
-  if (startIndex >= endIndex) return [];
+  if (startIndex > endIndex) return [];
 
-  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
-    return getTextareaTextRects(element, startIndex, endIndex, elementRect);
+  let rangeStart = startIndex;
+  let rangeEnd = endIndex;
+
+  if (rangeStart === rangeEnd) {
+    const textLength =
+      element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement
+        ? (element as HTMLTextAreaElement | HTMLInputElement).value.length
+        : element.textContent?.length ?? 0;
+    if (textLength === 0) return [];
+    if (rangeStart < textLength) {
+      rangeEnd = rangeStart + 1;
+    } else if (rangeStart > 0) {
+      rangeStart = rangeStart - 1;
+    } else {
+      return [];
+    }
   }
 
-  return getTextNodeRangeRects(element, startIndex, endIndex);
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    return getTextareaTextRects(element, rangeStart, rangeEnd, elementRect);
+  }
+
+  return getTextNodeRangeRects(element, rangeStart, rangeEnd);
 }

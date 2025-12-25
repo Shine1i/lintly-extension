@@ -1,5 +1,5 @@
 import { DiffMatchPatch, DiffOp, type Diff } from "diff-match-patch-ts";
-import type { Issue } from "./types";
+import type { Issue, AnalyzeResult } from "./types";
 import { findAllOccurrences } from "./textPositioning/occurrences";
 
 interface RangeMatch {
@@ -167,4 +167,142 @@ export function assignIssueOffsetsFromCorrection(
       end: reverseMatch.end,
     };
   });
+}
+
+function tokenizeWithWhitespace(text: string): string[] {
+  if (!text) return [];
+  const tokens = text.match(/\s+|[^\s]+/g);
+  return tokens ?? [];
+}
+
+function tokensToChars(
+  tokens: string[],
+  tokenArray: string[],
+  tokenMap: Map<string, number>
+): { chars: string; exceeded: boolean } {
+  let chars = "";
+
+  for (const token of tokens) {
+    let idx = tokenMap.get(token);
+    if (idx === undefined) {
+      idx = tokenArray.length;
+      tokenArray.push(token);
+      tokenMap.set(token, idx);
+      if (idx > 0xffff) {
+        return { chars: "", exceeded: true };
+      }
+    }
+    chars += String.fromCharCode(idx);
+  }
+
+  return { chars, exceeded: false };
+}
+
+function charsToTokens(chars: string, tokenArray: string[]): string {
+  let text = "";
+  for (let i = 0; i < chars.length; i++) {
+    text += tokenArray[chars.charCodeAt(i)];
+  }
+  return text;
+}
+
+function diffByTokens(
+  dmp: DiffMatchPatch,
+  originalText: string,
+  correctedText: string
+): Diff[] {
+  const tokens1 = tokenizeWithWhitespace(originalText);
+  const tokens2 = tokenizeWithWhitespace(correctedText);
+  const tokenArray: string[] = [];
+  const tokenMap = new Map<string, number>();
+
+  const first = tokensToChars(tokens1, tokenArray, tokenMap);
+  if (first.exceeded) {
+    const fallback = dmp.diff_main(originalText, correctedText, false);
+    dmp.diff_cleanupSemantic(fallback);
+    return fallback;
+  }
+
+  const second = tokensToChars(tokens2, tokenArray, tokenMap);
+  if (second.exceeded) {
+    const fallback = dmp.diff_main(originalText, correctedText, false);
+    dmp.diff_cleanupSemantic(fallback);
+    return fallback;
+  }
+
+  const diffs = dmp.diff_main(first.chars, second.chars, false);
+  dmp.diff_cleanupSemantic(diffs);
+  return diffs.map(([op, text]) => [op, charsToTokens(text, tokenArray)]);
+}
+
+/**
+ * Generates issues by diffing original text with corrected text.
+ * Uses token-based diffing to preserve whitespace for accurate offsets.
+ */
+export function generateIssuesFromDiff(
+  originalText: string,
+  correctedText: string
+): AnalyzeResult {
+  if (originalText === correctedText) {
+    return { corrected_text: correctedText, issues: [] };
+  }
+
+  const dmp = new DiffMatchPatch();
+  const wordDiffs = diffByTokens(dmp, originalText, correctedText);
+
+  const issues: Issue[] = [];
+  let originalPos = 0;
+
+  for (let i = 0; i < wordDiffs.length; i++) {
+    const [op, text] = wordDiffs[i];
+
+    if (op === DiffOp.Equal) {
+      originalPos += text.length;
+      continue;
+    }
+
+    if (op === DiffOp.Delete) {
+      const nextDiff = wordDiffs[i + 1];
+      const hasInsertion = nextDiff && nextDiff[0] === DiffOp.Insert;
+
+      const original = text;
+      const suggestion = hasInsertion ? nextDiff[1] : "";
+      const start = originalPos;
+      const end = originalPos + original.length;
+
+      if (original || suggestion) {
+        issues.push({
+          type: "grammar",
+          category: "correction",
+          severity: "error",
+          original,
+          suggestion,
+          explanation: "",
+          start,
+          end,
+        });
+      }
+
+      originalPos += original.length;
+
+      if (hasInsertion) {
+        i++;
+      }
+    } else if (op === DiffOp.Insert) {
+      if (text) {
+        issues.push({
+          type: "grammar",
+          category: "correction",
+          severity: "error",
+          original: "",
+          suggestion: text,
+          explanation: "",
+          start: originalPos,
+          end: originalPos,
+        });
+      }
+    }
+  }
+
+  return { corrected_text: correctedText, issues };
 }

@@ -20,8 +20,14 @@ export function getExplicitIssueRange(
   }
   const start = issue.start as number;
   const end = issue.end as number;
-  if (start < 0 || end <= start || end > text.length) {
+  if (start < 0 || end < start || end > text.length) {
     return null;
+  }
+  if (end === start) {
+    if (issue.original !== "" || !issue.suggestion) {
+      return null;
+    }
+    return { start, end };
   }
   if (issue.original && text.slice(start, end) !== issue.original) {
     return null;

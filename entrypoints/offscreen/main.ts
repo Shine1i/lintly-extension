@@ -1,5 +1,3 @@
-import { parse } from "@hoangvu12/yomi";
-import { z } from "zod";
 import type {
   Action,
   AnalyzeResult,
@@ -7,39 +5,16 @@ import type {
   Tone,
 } from "@/lib/types";
 import {
-  ANALYZE_SYSTEM,
-  CUSTOM_SYSTEM,
-  TONE_PROMPTS,
+  SYSTEM_PROMPT,
+  USER_PROMPT_PREFIXES,
+  TONE_PROMPT_PREFIX,
 } from "@/lib/prompts";
-import { assignIssueOffsetsFromCorrection } from "@/lib/issueOffsets";
+import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "moogin/typix-sft-exp2";
+const MODEL = "moogin/typix-experimental4";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
-
-const IssueSchema = z.object({
-  type: z.enum([
-    "grammar",
-    "spelling",
-    "punctuation",
-    "clarity",
-    "word_choice",
-  ]),
-  category: z.string(),
-  severity: z.enum(["error", "warning", "suggestion"]),
-  original: z.string(),
-  suggestion: z.string(),
-  explanation: z.string().default(""),
-  confidence: z.number().optional(),
-  start: z.number().optional(),
-  end: z.number().optional(),
-});
-
-const AnalyzeResultSchema = z.object({
-  corrected_text: z.string(),
-  issues: z.array(IssueSchema).default([]),
-});
 
 async function callAPI(
   systemPrompt: string,
@@ -75,24 +50,28 @@ async function callAPI(
   return data.choices[0].message.content;
 }
 
-function getSystemPrompt(
+function getUserMessage(
   action: Action,
+  text: string,
   options?: { tone?: Tone; customInstruction?: string }
 ): string {
   switch (action) {
     case "ANALYZE":
-      return ANALYZE_SYSTEM;
+      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}`;
     case "SUMMARIZE":
+      return `${USER_PROMPT_PREFIXES.SUMMARIZE}${text}`;
     case "PARAPHRASE":
-      return CUSTOM_SYSTEM;
-    case "TONE_REWRITE":
-      return options?.tone ? TONE_PROMPTS[options.tone] : TONE_PROMPTS.formal;
-    case "CUSTOM":
-      return options?.customInstruction
-        ? `${CUSTOM_SYSTEM}\n\nInstructions: ${options.customInstruction}`
-        : CUSTOM_SYSTEM;
+      return `${USER_PROMPT_PREFIXES.PARAPHRASE}${text}`;
+    case "TONE_REWRITE": {
+      const tone = options?.tone || "formal";
+      return `${TONE_PROMPT_PREFIX[tone]}${text}`;
+    }
+    case "CUSTOM": {
+      const instruction = options?.customInstruction || "";
+      return `${USER_PROMPT_PREFIXES.CUSTOM}${instruction}\n\n${text}`;
+    }
     default:
-      return ANALYZE_SYSTEM;
+      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}`;
   }
 }
 
@@ -102,35 +81,17 @@ async function processText(
   options?: { tone?: Tone; customInstruction?: string }
 ): Promise<string | AnalyzeResult> {
   console.log("[Lintly API] Processing action:", action);
-  const systemPrompt = getSystemPrompt(action, options);
+  const userMessage = getUserMessage(action, text, options);
 
-  let userMessage = text;
-  if (action === "SUMMARIZE") {
-    userMessage = `Summarize this text concisely in up to three sentences:\n\n${text}`;
-  } else if (action === "PARAPHRASE") {
-    userMessage = `Paraphrase this text while preserving the meaning:\n\n${text}`;
-  }
-
-  const response = await callAPI(systemPrompt, userMessage);
-
-  console.log(typeof response);
+  const response = await callAPI(SYSTEM_PROMPT, userMessage);
 
   if (action === "ANALYZE") {
-    const parsed = parse(AnalyzeResultSchema, response);
-
-    if (parsed.success) {
-      console.log("[Lintly API] Parsed ANALYZE result:", parsed.data);
-      return {
-        ...parsed.data,
-        issues: assignIssueOffsetsFromCorrection(
-          text,
-          parsed.data.corrected_text,
-          parsed.data.issues || []
-        ),
-      };
-    }
-    console.log("[Lintly API] Failed to parse with schema:", parsed.error);
-    return { corrected_text: response, issues: [] };
+    // Model returns just the corrected text, generate issues from diff
+    const correctedText = response;
+    console.log("[Lintly API] Corrected text:", correctedText.substring(0, 100) + "...");
+    const result = generateIssuesFromDiff(text, correctedText);
+    console.log("[Lintly API] Generated issues:", result.issues.length);
+    return result;
   }
 
   return response;

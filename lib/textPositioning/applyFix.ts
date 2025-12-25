@@ -73,7 +73,7 @@ export function applyTextRangeToElement(
   endIndex: number,
   replacement: string
 ): boolean {
-  if (startIndex >= endIndex) return false;
+  if (startIndex > endIndex) return false;
 
   if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
     const currentValue = element.value;
