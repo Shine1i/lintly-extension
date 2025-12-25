@@ -3,6 +3,7 @@ import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
 import { BulkUndoBanner } from "./BulkUndoBanner";
+import { Button } from "@/components/ui/button";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
 import type { BulkUndoState } from "@/lib/state/lintlyAppState";
 
@@ -22,6 +23,8 @@ interface LintlyModalProps {
   onCopy: () => void;
   onReset: () => void;
   onCustomSubmit: (instruction: string) => void;
+  onInsert: () => void;
+  onApplyAll: () => void;
 }
 
 export function LintlyModal({
@@ -40,6 +43,8 @@ export function LintlyModal({
   onCopy,
   onReset,
   onCustomSubmit,
+  onInsert,
+  onApplyAll,
 }: LintlyModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const [customInstruction, setCustomInstruction] = useState("");
@@ -170,13 +175,30 @@ export function LintlyModal({
             isLoading={isLoading}
           />
 
-          {issues.length > 0 && (
-            <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-start">
-              <span className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">{issues.length}</span> {issues.length === 1 ? "issue" : "issues"} found
-              </span>
+          <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{issues.length}</span> {issues.length === 1 ? "issue" : "issues"} found
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 text-xs rounded-lg"
+                onClick={onInsert}
+              >
+                Insert
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-7 px-3 text-xs rounded-lg"
+                onClick={onApplyAll}
+                disabled={issues.length === 0}
+              >
+                Apply all
+              </Button>
             </div>
-          )}
+          </div>
 
           <BottomInput
             value={customInstruction}

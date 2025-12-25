@@ -344,6 +344,86 @@ export default function App() {
     [dispatch, processText]
   );
 
+  const handleInsert = useCallback(() => {
+    const text =
+      state.result && typeof state.result === "object"
+        ? state.result.corrected_text
+        : typeof state.result === "string"
+          ? state.result
+          : state.sourceText;
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
+      const start = activeElement.selectionStart ?? 0;
+      const end = activeElement.selectionEnd ?? activeElement.value.length;
+      const before = activeElement.value.slice(0, start);
+      const after = activeElement.value.slice(end);
+      activeElement.value = before + text + after;
+      activeElement.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    dispatch({ type: "HIDE_MODAL" });
+  }, [dispatch, state.result, state.sourceText]);
+
+  const handleApplyAll = useCallback(() => {
+    if (!state.result || typeof state.result !== "object" || state.result.issues.length === 0) {
+      return;
+    }
+
+    const issues = state.result.issues;
+    const previousSourceText = state.sourceText;
+    const previousResult = state.result;
+
+    let newText = state.sourceText;
+    let appliedCount = 0;
+    let skippedCount = 0;
+
+    const sortedIssues = [...issues].sort((a, b) => {
+      const aIndex = newText.indexOf(a.original);
+      const bIndex = newText.indexOf(b.original);
+      return bIndex - aIndex;
+    });
+
+    for (const issue of sortedIssues) {
+      const index = newText.indexOf(issue.original);
+      if (index !== -1) {
+        newText =
+          newText.slice(0, index) +
+          issue.suggestion +
+          newText.slice(index + issue.original.length);
+        appliedCount++;
+      } else {
+        skippedCount++;
+      }
+    }
+
+    dispatch({ type: "SET_SOURCE_TEXT", text: newText });
+    dispatch({
+      type: "SET_RESULT",
+      result: {
+        corrected_text: newText,
+        issues: [],
+      },
+    });
+    dispatch({
+      type: "SET_BULK_UNDO",
+      bulkUndo: {
+        sourceText: previousSourceText,
+        result: previousResult,
+        requestedCount: issues.length,
+        appliedCount,
+        skippedCount,
+        timestamp: Date.now(),
+      },
+    });
+
+    trackEvent("bulk_accept", {
+      source: "apply_all",
+      requestedCount: issues.length,
+      appliedCount,
+      skippedCount,
+    });
+  }, [dispatch, state.result, state.sourceText]);
+
   const handleToolbarAction = useCallback((action: Action, tone?: Tone) => {
     const activeElement = document.activeElement;
     let text = "";
@@ -493,6 +573,8 @@ export default function App() {
         onCopy={handleCopy}
         onReset={handleReset}
         onCustomSubmit={handleCustomSubmit}
+        onInsert={handleInsert}
+        onApplyAll={handleApplyAll}
       />
     </>
   );
