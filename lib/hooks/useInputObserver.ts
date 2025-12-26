@@ -45,9 +45,10 @@ function isValidEditableElement(element: Element | null): element is HTMLElement
     return !element.readOnly && !element.disabled;
   }
 
+  // Exclude all <input> elements - they're typically for short entries
+  // (login forms, search boxes, emails) that don't benefit from grammar checking
   if (element instanceof HTMLInputElement) {
-    const validTypes = ["text", "search", "url", "email"];
-    return validTypes.includes(element.type) && !element.readOnly && !element.disabled;
+    return false;
   }
 
   return element.isContentEditable;

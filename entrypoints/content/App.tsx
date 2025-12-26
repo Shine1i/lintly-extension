@@ -513,11 +513,22 @@ export default function App() {
 
       const activeElement = document.activeElement;
 
+      // Only show toolbar for textarea, input, or contenteditable elements
+      const isTextarea = activeElement instanceof HTMLTextAreaElement;
+      const isInput = activeElement instanceof HTMLInputElement;
+      const isContentEditable = activeElement instanceof HTMLElement && activeElement.isContentEditable;
+
+      if (!isTextarea && !isInput && !isContentEditable) {
+        dispatch({ type: "HIDE_TOOLBAR" });
+        return;
+      }
+
       let text = "";
-      if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
-        const start = activeElement.selectionStart ?? 0;
-        const end = activeElement.selectionEnd ?? 0;
-        text = activeElement.value.slice(start, end).trim();
+      if (isTextarea || isInput) {
+        const el = activeElement as HTMLTextAreaElement | HTMLInputElement;
+        const start = el.selectionStart ?? 0;
+        const end = el.selectionEnd ?? 0;
+        text = el.value.slice(start, end).trim();
       } else {
         text = window.getSelection()?.toString().trim() || "";
       }
