@@ -527,8 +527,12 @@
   bottom: 0;
   height: 2px;
   background-color: var(--lintly-underline-color);
-  transform: scaleX(0);
+  transform: scaleX(1);
   transform-origin: left;
+}
+
+.lintly-inline-highlight-animate::after {
+  transform: scaleX(0);
   animation: lintly-underline-sweep 0.25s ease-out forwards;
 }
 

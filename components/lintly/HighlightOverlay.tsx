@@ -72,6 +72,9 @@ export function HighlightOverlay({
   changePosition = 0,
 }: HighlightOverlayProps) {
   const shadowContainer = useShadowContainer();
+  const animatedIssueIdsRef = useRef<Set<string>>(new Set());
+  const [animatingIssueIds, setAnimatingIssueIds] = useState<Set<string>>(new Set());
+  const animationTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const { scrollPosition, elementPosition, pagePosition, layoutVersion } = useScrollSync(targetElement);
   const resolvedText = useMemo(() => {
     if (!targetElement) {
@@ -337,7 +340,54 @@ export function HighlightOverlay({
       : undefined;
   const isPopoverOpen = Boolean(activeIssue && anchorRect);
 
-  if (!pagePosition || issues.length === 0 || displayRects.size === 0) {
+  useEffect(() => {
+    const currentIds = new Set(issueIdByIssue.values());
+    const newIds: string[] = [];
+    for (const issueId of currentIds) {
+      if (!animatedIssueIdsRef.current.has(issueId)) {
+        newIds.push(issueId);
+      }
+    }
+
+    if (newIds.length === 0) return;
+
+    setAnimatingIssueIds((prev) => {
+      const next = new Set(prev);
+      for (const issueId of newIds) {
+        next.add(issueId);
+      }
+      return next;
+    });
+
+    for (const issueId of newIds) {
+      animatedIssueIdsRef.current.add(issueId);
+      const existingTimer = animationTimersRef.current.get(issueId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        animationTimersRef.current.delete(issueId);
+        setAnimatingIssueIds((prev) => {
+          if (!prev.has(issueId)) return prev;
+          const next = new Set(prev);
+          next.delete(issueId);
+          return next;
+        });
+      }, 300);
+      animationTimersRef.current.set(issueId, timer);
+    }
+  }, [issueIdByIssue]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of animationTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      animationTimersRef.current.clear();
+    };
+  }, []);
+
+  if (!pagePosition || issues.length === 0) {
     return null;
   }
 
@@ -395,10 +445,13 @@ export function HighlightOverlay({
           if (!rects || rects.length === 0) return null;
 
           const highlightClass = getInlineHighlightClass(issue.severity);
+          const shouldAnimate = animatingIssueIds.has(issueId);
           return rects.map((rect, rectIndex) => (
             <div
               key={`${issueId}-${rectIndex}`}
-              className={`lintly-inline-highlight ${highlightClass}`}
+              className={`lintly-inline-highlight ${highlightClass} ${
+                shouldAnimate ? "lintly-inline-highlight-animate" : ""
+              }`}
               style={{
                 position: "absolute",
                 left: rect.left,
