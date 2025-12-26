@@ -75,24 +75,47 @@ function getUserMessage(
   }
 }
 
+async function processLineByLine(text: string): Promise<string> {
+  const lines = text.split("\n");
+  const correctedLines: string[] = [];
+
+  for (const line of lines) {
+    // Skip empty lines - preserve them as-is
+    if (line.trim() === "") {
+      correctedLines.push(line);
+      continue;
+    }
+
+    const userMessage = getUserMessage("ANALYZE", line);
+    const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
+    // Trim to remove any extra whitespace the model might add
+    correctedLines.push(corrected.trim());
+  }
+
+  return correctedLines.join("\n");
+}
+
 async function processText(
   action: Action,
   text: string,
   options?: { tone?: Tone; customInstruction?: string }
 ): Promise<string | AnalyzeResult> {
   console.log("[Lintly API] Processing action:", action);
-  const userMessage = getUserMessage(action, text, options);
-
-  const response = await callAPI(SYSTEM_PROMPT, userMessage);
 
   if (action === "ANALYZE") {
-    // Model returns just the corrected text, generate issues from diff
-    const correctedText = response;
-    console.log("[Lintly API] Corrected text:", correctedText.substring(0, 100) + "...");
+    // Process line-by-line to preserve line breaks
+    const correctedText = await processLineByLine(text);
+    console.log(
+      "[Lintly API] Corrected text:",
+      correctedText.substring(0, 100) + "..."
+    );
     const result = generateIssuesFromDiff(text, correctedText);
     console.log("[Lintly API] Generated issues:", result.issues.length);
     return result;
   }
+
+  const userMessage = getUserMessage(action, text, options);
+  const response = await callAPI(SYSTEM_PROMPT, userMessage);
 
   return response;
 }
