@@ -95,7 +95,7 @@ export function InlineHighlightManager({
   // Keep idle typing fast by removing fixed issues without full re-analysis.
   const handleIssueFixed = useCallback(
     async ({ issue, sentenceAnchor, sentenceIssues }: IssueFixContext) => {
-      console.log("[Lintly] Fix applied:", issue.original, "→", issue.suggestion);
+      console.log("[Typix] Fix applied:", issue.original, "→", issue.suggestion);
       const previousText = analysisState.lastAnalyzedText;
       const issuesToRemove =
         sentenceIssues && sentenceIssues.length > 0 ? sentenceIssues : [issue];
@@ -142,7 +142,7 @@ export function InlineHighlightManager({
     <>
       {indicatorPosition && (
         <div
-          className="lintly-inline-indicator"
+          className="typix-inline-indicator"
           style={{
             position: "absolute",
             left: indicatorPosition.x,
@@ -153,8 +153,8 @@ export function InlineHighlightManager({
           }}
         >
           <div
-            className={`lintly-inline-badge ${badgeColor} ${
-              isLoading ? "lintly-inline-badge-loading" : ""
+            className={`typix-inline-badge ${badgeColor} ${
+              isLoading ? "typix-inline-badge-loading" : ""
             } ${
               analysisState.isAnalyzing ? "opacity-70" : ""
             }`}

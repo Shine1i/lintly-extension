@@ -72,7 +72,7 @@ export function SentenceDiff({ before, after }: SentenceDiffProps) {
   if (!before && !after) return null;
 
   return (
-    <div className="lintly-sentence-diff">
+    <div className="typix-sentence-diff">
       {diffs.length === 0 ? (
         <span>{before}</span>
       ) : (

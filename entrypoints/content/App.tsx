@@ -1,8 +1,8 @@
 import { useEffect, useCallback, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
-import { LintlyModal } from "@/components/lintly/LintlyModal";
-import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
-import { InlineHighlightManager } from "@/components/lintly/InlineHighlightManager";
+import { TypixModal } from "@/components/typix/TypixModal";
+import { SelectionToolbar } from "@/components/typix/SelectionToolbar";
+import { InlineHighlightManager } from "@/components/typix/InlineHighlightManager";
 import {
   applySelectionSnapshot,
   captureSelectionSnapshot,
@@ -11,7 +11,7 @@ import {
   type SelectionSnapshot,
 } from "@/lib/textPositioning";
 import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
-import { appStateAtom } from "@/lib/state/lintlyAppState";
+import { appStateAtom } from "@/lib/state/typixAppState";
 import {
   applyIssuesToSentence,
   buildIssueSentenceContexts,
@@ -185,7 +185,7 @@ export default function App() {
           });
         }
       } catch (err) {
-        console.log("[Lintly] Sentence re-analysis failed:", err);
+        console.log("[Typix] Sentence re-analysis failed:", err);
       }
     },
     [dispatch, state.tone]
@@ -371,7 +371,7 @@ export default function App() {
       applySelectionSnapshot(storedSnapshot, text) ||
       applySelectionSnapshot(captureSelectionSnapshot(activeElement), text);
     if (!applied) {
-      console.log("[Lintly] Insert failed: no valid selection target");
+      console.log("[Typix] Insert failed: no valid selection target");
     }
     selectionSnapshotRef.current = null;
     dispatch({ type: "HIDE_MODAL" });
@@ -468,14 +468,14 @@ export default function App() {
   }, [state.isVisible, state.isLoading, state.sourceText, state.result, state.action, processText]);
 
   useEffect(() => {
-    console.log("[Lintly] Extension loaded successfully");
+    console.log("[Typix] Extension loaded successfully");
   }, []);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
-        console.log("[Lintly] Shortcut triggered");
+        console.log("[Typix] Shortcut triggered");
 
         const activeElement = document.activeElement;
         let text = "";
@@ -534,7 +534,7 @@ export default function App() {
       let rect = getSelectionRect(activeElement);
 
       if (!rect || (rect.top === 0 && rect.left === 0)) {
-        console.log("[Lintly] Using mouse position as fallback");
+        console.log("[Typix] Using mouse position as fallback");
         rect = {
           top: e.clientY - 10,
           bottom: e.clientY + 10,
@@ -543,7 +543,7 @@ export default function App() {
         };
       }
 
-      console.log("[Lintly] MouseUp - text:", text.substring(0, 30), "rect:", rect);
+      console.log("[Typix] MouseUp - text:", text.substring(0, 30), "rect:", rect);
 
       const position = calculateToolbarPosition(rect);
       dispatch({ type: "SHOW_TOOLBAR", position, selectionRect: rect });
@@ -582,7 +582,7 @@ export default function App() {
         <SelectionToolbar position={state.toolbarPosition} onAction={handleToolbarAction} />
       )}
 
-      <LintlyModal
+      <TypixModal
         isVisible={state.isVisible}
         position={state.modalPosition}
         onClose={() => dispatch({ type: "HIDE_MODAL" })}

@@ -5,9 +5,9 @@ import { BottomInput } from "./BottomInput";
 import { BulkUndoBanner } from "./BulkUndoBanner";
 import { Button } from "@/components/ui/button";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
-import type { BulkUndoState } from "@/lib/state/lintlyAppState";
+import type { BulkUndoState } from "@/lib/state/typixAppState";
 
-interface LintlyModalProps {
+interface TypixModalProps {
   isVisible: boolean;
   position: { x: number; y: number };
   onClose: () => void;
@@ -27,7 +27,7 @@ interface LintlyModalProps {
   onApplyAll: () => void;
 }
 
-export function LintlyModal({
+export function TypixModal({
   isVisible,
   position,
   onClose,
@@ -45,7 +45,7 @@ export function LintlyModal({
   onCustomSubmit,
   onInsert,
   onApplyAll,
-}: LintlyModalProps) {
+}: TypixModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const [customInstruction, setCustomInstruction] = useState("");
 

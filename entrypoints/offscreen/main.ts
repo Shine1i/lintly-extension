@@ -56,7 +56,7 @@ async function callAPI(
   userText: string
 ): Promise<string> {
   console.log(
-    "[Lintly API] Calling API with text:",
+    "[Typix API] Calling API with text:",
     userText.substring(0, 100) + "..."
   );
 
@@ -112,7 +112,7 @@ function getUserMessage(
 
 async function processSentencesInParallel(text: string): Promise<string> {
   const parts = splitIntoSentences(text);
-  console.log("[Lintly API] Split into", parts.length, "parts");
+  console.log("[Typix API] Split into", parts.length, "parts");
 
   // Process all sentences in parallel
   const results = await Promise.all(
@@ -125,7 +125,7 @@ async function processSentencesInParallel(text: string): Promise<string> {
       const trimmedSentence = sentence.trim();
 
       // Call API
-      console.log(`[Lintly API] Processing sentence ${index + 1}:`, trimmedSentence.substring(0, 30) + "...");
+      console.log(`[Typix API] Processing sentence ${index + 1}:`, trimmedSentence.substring(0, 30) + "...");
       const userMessage = getUserMessage("ANALYZE", trimmedSentence);
       const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
       const trimmedCorrected = corrected.trim();
@@ -145,17 +145,17 @@ async function processText(
   text: string,
   options?: { tone?: Tone; customInstruction?: string }
 ): Promise<string | AnalyzeResult> {
-  console.log("[Lintly API] Processing action:", action);
+  console.log("[Typix API] Processing action:", action);
 
   if (action === "ANALYZE") {
     // Process sentences in parallel for faster results
     const correctedText = await processSentencesInParallel(text);
     console.log(
-      "[Lintly API] Corrected text:",
+      "[Typix API] Corrected text:",
       correctedText.substring(0, 100) + "..."
     );
     const result = generateIssuesFromDiff(text, correctedText);
-    console.log("[Lintly API] Generated issues:", result.issues.length);
+    console.log("[Typix API] Generated issues:", result.issues.length);
     return result;
   }
 
@@ -166,20 +166,20 @@ async function processText(
 }
 
 browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
-  console.log("[Lintly API] Received message:", msg);
+  console.log("[Typix API] Received message:", msg);
 
   if (msg.target !== "offscreen" || msg.type !== "GENERATE") {
-    console.log("[Lintly API] Ignoring message (wrong target/type)");
+    console.log("[Typix API] Ignoring message (wrong target/type)");
     return;
   }
 
   processText(msg.action, msg.text, msg.options)
     .then((result) => {
-      console.log("[Lintly API] Sending success response:", result);
+      console.log("[Typix API] Sending success response:", result);
       respond({ success: true, result });
     })
     .catch((e: Error) => {
-      console.log("[Lintly API] Sending error response:", e.message);
+      console.log("[Typix API] Sending error response:", e.message);
       respond({ success: false, error: e.message });
     });
 

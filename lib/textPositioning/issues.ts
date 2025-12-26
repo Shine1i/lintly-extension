@@ -47,9 +47,9 @@ export interface IssuePosition {
 }
 
 export function getIssuePositions(text: string, issues: Issue[]): IssuePosition[] {
-  console.log("[Lintly Highlight] === getIssuePositions ===");
-  console.log("[Lintly Highlight] Text:", JSON.stringify(text));
-  console.log("[Lintly Highlight] Issues count:", issues.length);
+  console.log("[Typix Highlight] === getIssuePositions ===");
+  console.log("[Typix Highlight] Text:", JSON.stringify(text));
+  console.log("[Typix Highlight] Issues count:", issues.length);
 
   const sortedIssues = sortIssuesByTextPosition(text, issues);
   const occurrenceCounts = new Map<string, number>();
@@ -63,8 +63,8 @@ export function getIssuePositions(text: string, issues: Issue[]): IssuePosition[
 
     const explicitRange = getExplicitIssueRange(text, issue);
     if (explicitRange) {
-      console.log(`[Lintly Highlight] Issue "${issue.original}" -> "${issue.suggestion}" has explicit range [${explicitRange.start}, ${explicitRange.end}]`);
-      console.log(`[Lintly Highlight]   Text at range: "${text.slice(explicitRange.start, explicitRange.end)}"`);
+      console.log(`[Typix Highlight] Issue "${issue.original}" -> "${issue.suggestion}" has explicit range [${explicitRange.start}, ${explicitRange.end}]`);
+      console.log(`[Typix Highlight]   Text at range: "${text.slice(explicitRange.start, explicitRange.end)}"`);
       positions.push({
         issue,
         start: explicitRange.start,
@@ -75,7 +75,7 @@ export function getIssuePositions(text: string, issues: Issue[]): IssuePosition[
     }
 
     if (!searchText) {
-      console.log(`[Lintly Highlight] Issue has no searchText, skipping`);
+      console.log(`[Typix Highlight] Issue has no searchText, skipping`);
       positions.push({ issue, start: -1, end: -1, occurrenceIndex });
       continue;
     }
@@ -84,12 +84,12 @@ export function getIssuePositions(text: string, issues: Issue[]): IssuePosition[
       occurrencesByText.get(searchText) || findAllOccurrences(text, searchText);
     occurrencesByText.set(searchText, occurrences);
 
-    console.log(`[Lintly Highlight] Searching for "${searchText}" - found ${occurrences.length} occurrences at:`, occurrences);
+    console.log(`[Typix Highlight] Searching for "${searchText}" - found ${occurrences.length} occurrences at:`, occurrences);
 
     if (occurrenceIndex < occurrences.length) {
       const start = occurrences[occurrenceIndex];
-      console.log(`[Lintly Highlight]   Using occurrence ${occurrenceIndex} at [${start}, ${start + searchText.length}]`);
-      console.log(`[Lintly Highlight]   Text at position: "${text.slice(start, start + searchText.length)}"`);
+      console.log(`[Typix Highlight]   Using occurrence ${occurrenceIndex} at [${start}, ${start + searchText.length}]`);
+      console.log(`[Typix Highlight]   Text at position: "${text.slice(start, start + searchText.length)}"`);
       positions.push({
         issue,
         start,
@@ -97,12 +97,12 @@ export function getIssuePositions(text: string, issues: Issue[]): IssuePosition[
         occurrenceIndex,
       });
     } else {
-      console.log(`[Lintly Highlight]   No valid occurrence found (index ${occurrenceIndex} >= ${occurrences.length})`);
+      console.log(`[Typix Highlight]   No valid occurrence found (index ${occurrenceIndex} >= ${occurrences.length})`);
       positions.push({ issue, start: -1, end: -1, occurrenceIndex });
     }
   }
 
-  console.log("[Lintly Highlight] Final positions:", positions.map(p => `[${p.start}, ${p.end}]`));
+  console.log("[Typix Highlight] Final positions:", positions.map(p => `[${p.start}, ${p.end}]`));
   return positions;
 }
 
@@ -126,23 +126,23 @@ export function getIssueRects(element: HTMLElement, issues: Issue[]): Map<Issue,
     : extractContentEditableText(element).text;
   const elementRect = isTextInput ? element.getBoundingClientRect() : undefined;
 
-  console.log("[Lintly Highlight] === getIssueRects ===");
-  console.log("[Lintly Highlight] Element text:", JSON.stringify(elementText));
+  console.log("[Typix Highlight] === getIssueRects ===");
+  console.log("[Typix Highlight] Element text:", JSON.stringify(elementText));
 
   const positions = getIssuePositions(elementText, issues);
 
   for (const pos of positions) {
     if (pos.start < 0 || pos.end < pos.start) {
-      console.log(`[Lintly Highlight] Skipping issue "${pos.issue.original}" - invalid range [${pos.start}, ${pos.end}]`);
+      console.log(`[Typix Highlight] Skipping issue "${pos.issue.original}" - invalid range [${pos.start}, ${pos.end}]`);
       continue;
     }
     const rects = getTextRangeRects(element, pos.start, pos.end, elementRect);
-    console.log(`[Lintly Highlight] Issue "${pos.issue.original}" at [${pos.start}, ${pos.end}] -> ${rects.length} rects`);
+    console.log(`[Typix Highlight] Issue "${pos.issue.original}" at [${pos.start}, ${pos.end}] -> ${rects.length} rects`);
     if (rects.length > 0) {
       result.set(pos.issue, rects);
     }
   }
 
-  console.log("[Lintly Highlight] Total issues with rects:", result.size);
+  console.log("[Typix Highlight] Total issues with rects:", result.size);
   return result;
 }

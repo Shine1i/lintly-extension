@@ -12,14 +12,14 @@ export default defineContentScript({
   cssInjectionMode: "ui",
 
   async main(ctx) {
-    console.log("[Lintly] Creating shadow root UI...");
+    console.log("[Typix] Creating shadow root UI...");
 
     const ui = await createShadowRootUi(ctx, {
-      name: "lintly-ui",
+      name: "typix-ui",
       position: "inline",
       anchor: "body",
       onMount: (container) => {
-        console.log("[Lintly] Mounting React app...");
+        console.log("[Typix] Mounting React app...");
         setMirrorHost(container);
         const root = createRoot(container);
         root.render(
@@ -29,7 +29,7 @@ export default defineContentScript({
             </JotaiProvider>
           </ShadowDOMProvider>
         );
-        console.log("[Lintly] React app rendered");
+        console.log("[Typix] React app rendered");
         return root;
       },
       onRemove: (root) => {
@@ -40,6 +40,6 @@ export default defineContentScript({
     });
 
     ui.mount();
-    console.log("[Lintly] UI mounted");
+    console.log("[Typix] UI mounted");
   },
 });

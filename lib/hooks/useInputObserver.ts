@@ -58,11 +58,11 @@ function getContentEditableRoot(element: HTMLElement): HTMLElement {
   let lastEditable: HTMLElement = element;
   while (current && current.isContentEditable) {
     lastEditable = current;
-    const parent = current.parentElement;
-    if (!parent || !parent.isContentEditable) {
+    const parentElement: HTMLElement | null = current.parentElement;
+    if (!parentElement || !parentElement.isContentEditable) {
       break;
     }
-    current = parent;
+    current = parentElement;
   }
   return lastEditable;
 }
@@ -84,8 +84,8 @@ function resolveEditableTarget(event: Event): HTMLElement | null {
   }
 
   for (const candidate of candidates) {
-    let current: HTMLElement | null = null;
-    if (candidate instanceof HTMLElement) {
+    let current: Element | null = null;
+    if (candidate instanceof Element) {
       current = candidate;
     } else if (candidate instanceof Node) {
       current = candidate.parentElement;

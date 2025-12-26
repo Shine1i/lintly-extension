@@ -147,13 +147,13 @@ export function getTextareaSelectionRect(
 
   mirror.innerHTML =
     escapeHtml(before) +
-    '<span id="lintly-sel-marker">' +
+    '<span id="typix-sel-marker">' +
     escapeHtml(selected) +
     "</span>";
 
   ensureMirrorMounted(mirror);
 
-  const marker = mirror.querySelector("#lintly-sel-marker");
+  const marker = mirror.querySelector("#typix-sel-marker");
   if (!marker) {
     return null;
   }
@@ -188,14 +188,14 @@ export function getTextareaTextRects(
 
   mirror.innerHTML =
     escapeHtml(before) +
-    '<span class="lintly-measure-target">' +
+    '<span class="typix-measure-target">' +
     escapeHtml(target) +
     "</span>" +
     escapeHtml(after);
 
   ensureMirrorMounted(mirror);
 
-  const targetSpan = mirror.querySelector(".lintly-measure-target");
+  const targetSpan = mirror.querySelector(".typix-measure-target");
   if (!targetSpan) {
     return [];
   }

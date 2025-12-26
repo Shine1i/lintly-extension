@@ -27,13 +27,13 @@ import { useShadowContainer } from "@/lib/ShadowDOMContext";
 function getInlineHighlightClass(severity: Issue["severity"]): string {
   switch (severity) {
     case "error":
-      return "lintly-inline-highlight-error";
+      return "typix-inline-highlight-error";
     case "warning":
-      return "lintly-inline-highlight-warning";
+      return "typix-inline-highlight-warning";
     case "suggestion":
-      return "lintly-inline-highlight-suggestion";
+      return "typix-inline-highlight-suggestion";
     default:
-      return "lintly-inline-highlight-suggestion";
+      return "typix-inline-highlight-suggestion";
   }
 }
 
@@ -397,7 +397,7 @@ export function HighlightOverlay({
 
   return (
     <div
-      className="lintly-inline-overlay"
+      className="typix-inline-overlay"
       style={{
         position: "absolute",
         top: pagePosition.pageTop,
@@ -411,7 +411,7 @@ export function HighlightOverlay({
     >
       {/* Inner layer - transformed to compensate for element's internal scroll */}
       <div
-        className="lintly-inline-overlay-inner"
+        className="typix-inline-overlay-inner"
         style={{
           position: "absolute",
           top: 0,
@@ -426,7 +426,7 @@ export function HighlightOverlay({
           renderedSentenceRects.map((rect, index) => (
             <div
               key={`sentence-${index}`}
-              className="lintly-inline-sentence-highlight"
+              className="typix-inline-sentence-highlight"
               style={{
                 position: "absolute",
                 left: rect.left,
@@ -449,8 +449,8 @@ export function HighlightOverlay({
           return rects.map((rect, rectIndex) => (
             <div
               key={`${issueId}-${rectIndex}`}
-              className={`lintly-inline-highlight ${highlightClass} ${
-                shouldAnimate ? "lintly-inline-highlight-animate" : ""
+              className={`typix-inline-highlight ${highlightClass} ${
+                shouldAnimate ? "typix-inline-highlight-animate" : ""
               }`}
               style={{
                 position: "absolute",

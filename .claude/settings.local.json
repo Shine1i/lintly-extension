@@ -1,17 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(cat:*)",
-      "Bash(dir /s /b \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\")",
-      "Bash(npx shadcn@latest add button dropdown-menu popover slider input textarea --yes)",
-      "Bash(del \"C:\\\\Users\\\\wasim\\\\code\\\\transformers-extension\\\\wxt-dev examples main examples-offscreen-document-setup\\\\entrypoints\\\\content.ts\")",
-      "Bash(npm run build:*)",
-      "Bash(rm:*)",
-      "Bash(bunx:*)",
-      "WebFetch(domain:www.grammarly.com)",
-      "WebSearch",
-      "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nSimplify extension: remove background processing, keep selection-based modal\n\n- Remove automatic text analysis on focus/input\n- Remove underline rendering and hover tooltips\n- Remove sentence caching and batching\n- Keep selection toolbar and modal popup\n- Update model to moogin/lintly-lfm2-700m-exp-new\n\nDeleted files:\n- lib/backgroundAnalyzer.ts\n- lib/sentenceCache.ts\n- lib/underlineManager.ts\n- lib/editableDetector.ts\n- lib/storage.ts\n- lib/textFinder.ts\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
-    ]
+    "allow": ["Bash(cat:*)"]
   }
 }

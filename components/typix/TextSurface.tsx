@@ -177,7 +177,7 @@ export function TextSurface({
         <p className="text-[15px] text-foreground leading-[1.85] font-normal">
           {sentenceBlocks.map((block) => {
             const isActive = activeSentenceIndex === block.sentenceIndex;
-            const sentenceClass = isActive ? "lintly-sentence-highlight" : "";
+            const sentenceClass = isActive ? "typix-sentence-highlight" : "";
 
             return (
               <span key={block.key}>

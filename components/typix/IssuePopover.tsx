@@ -191,7 +191,7 @@ export function IssuePopover({
                 Sentence update
               </p>
               <div
-                className="lintly-sentence-diff-action"
+                className="typix-sentence-diff-action"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleApplySentenceFix();

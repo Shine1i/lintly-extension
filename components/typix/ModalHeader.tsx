@@ -53,6 +53,10 @@ function getIssueTypeLabel(type: string): string {
 
 export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   const healthDotColor = getHealthDotColor(issues.length);
+  const iconUrl =
+    typeof browser !== "undefined"
+      ? browser.runtime.getURL("/icon/icon432.png")
+      : "/icon/icon432.png";
 
   const issuesByType = issues.reduce(
     (acc, issue) => {
@@ -65,7 +69,11 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
   const currentToneLabel = TONES.find((t) => t.value === tone)?.label || "Professional";
 
   return (
-    <header className="h-12 flex items-center justify-end px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
+    <header className="h-12 flex items-center justify-between px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
+      <div className="flex items-center gap-2">
+        <img src={iconUrl} alt="Typix" className="h-8 w-8 rounded-sm" />
+        <span className="text-xs font-semibold text-foreground">Typix</span>
+      </div>
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

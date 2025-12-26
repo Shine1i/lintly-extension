@@ -34,7 +34,7 @@ function getSeverityStyles(severity: Severity): {
         icon: "text-red-500 dark:text-red-400",
         label: "text-red-600 dark:text-red-400",
         border: "border-red-100 dark:border-red-500/20",
-        highlight: "lintly-inline-highlight-error",
+        highlight: "typix-inline-highlight-error",
       };
     case "warning":
       return {
@@ -42,7 +42,7 @@ function getSeverityStyles(severity: Severity): {
         icon: "text-amber-500 dark:text-amber-400",
         label: "text-amber-600 dark:text-amber-400",
         border: "border-amber-100 dark:border-amber-500/20",
-        highlight: "lintly-inline-highlight-warning",
+        highlight: "typix-inline-highlight-warning",
       };
     case "suggestion":
       return {
@@ -50,7 +50,7 @@ function getSeverityStyles(severity: Severity): {
         icon: "text-indigo-500 dark:text-indigo-400",
         label: "text-indigo-600 dark:text-indigo-400",
         border: "border-indigo-100 dark:border-indigo-500/20",
-        highlight: "lintly-inline-highlight-suggestion",
+        highlight: "typix-inline-highlight-suggestion",
       };
     default:
       return {
@@ -58,7 +58,7 @@ function getSeverityStyles(severity: Severity): {
         icon: "text-muted-foreground",
         label: "text-muted-foreground",
         border: "border-border",
-        highlight: "lintly-inline-highlight-suggestion",
+        highlight: "typix-inline-highlight-suggestion",
       };
   }
 }
@@ -158,7 +158,7 @@ export function HighlightSpan({
                   Sentence update
                 </p>
                 <div
-                  className="lintly-sentence-diff-action"
+                  className="typix-sentence-diff-action"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleApplyFix();
