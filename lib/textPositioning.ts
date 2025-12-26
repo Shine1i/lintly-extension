@@ -8,5 +8,11 @@ export {
   getIssueRects,
   type IssuePosition,
 } from "./textPositioning/issues";
-export { getSelectionRect, getElementText } from "./textPositioning/selection";
+export {
+  getSelectionRect,
+  getElementText,
+  captureSelectionSnapshot,
+  applySelectionSnapshot,
+  type SelectionSnapshot,
+} from "./textPositioning/selection";
 export { applyFixToElement, applyTextRangeToElement } from "./textPositioning/applyFix";

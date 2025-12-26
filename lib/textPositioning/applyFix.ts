@@ -1,5 +1,5 @@
 import { findAllOccurrences } from "./occurrences";
-import { buildTextNodeRanges, resolveTextRangeNodes } from "./textNodes";
+import { extractContentEditableText, resolveTextRangeNodes } from "./textNodes";
 
 export function applyFixToElement(
   element: HTMLElement,
@@ -35,7 +35,8 @@ export function applyFixToElement(
     const selection = window.getSelection();
     if (!selection) return false;
 
-    const fullText = element.textContent || "";
+    // Use unified extraction to guarantee text and ranges are aligned
+    const { text: fullText, ranges: textNodes } = extractContentEditableText(element);
     const occurrences = findAllOccurrences(fullText, original);
 
     if (occurrenceIndex >= occurrences.length) return false;
@@ -43,7 +44,6 @@ export function applyFixToElement(
     const matchStart = occurrences[occurrenceIndex];
     const matchEnd = matchStart + original.length;
 
-    const textNodes = buildTextNodeRanges(element);
     const resolved = resolveTextRangeNodes(textNodes, matchStart, matchEnd);
     if (!resolved) return false;
 
@@ -97,12 +97,12 @@ export function applyTextRangeToElement(
   }
 
   if (element.isContentEditable) {
-    const fullText = element.textContent || "";
+    // Use unified extraction to guarantee text and ranges are aligned
+    const { text: fullText, ranges: textNodes } = extractContentEditableText(element);
     if (startIndex < 0 || startIndex > fullText.length) return false;
 
     const safeEnd = Math.min(endIndex, fullText.length);
 
-    const textNodes = buildTextNodeRanges(element);
     const resolved = resolveTextRangeNodes(textNodes, startIndex, safeEnd);
     if (!resolved) return false;
 

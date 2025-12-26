@@ -8,13 +8,48 @@ import {
   SYSTEM_PROMPT,
   USER_PROMPT_PREFIXES,
   TONE_PROMPT_PREFIX,
+  TONE_PROMPT_SUFFIX,
 } from "@/lib/prompts";
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "moogin/typix-experimental4";
+const MODEL = "/app/models/Typix-1.5re5-merged";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
+
+// Split text into sentences while preserving delimiters and whitespace
+function splitIntoSentences(text: string): { sentence: string; isContent: boolean }[] {
+  // Match sentences ending with . ! ? (with optional quotes) followed by space or end
+  const sentenceRegex = /[^.!?]*[.!?]+["']?\s*/g;
+  const parts: { sentence: string; isContent: boolean }[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = sentenceRegex.exec(text)) !== null) {
+    // Add any text before this match that wasn't captured
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      if (before) {
+        parts.push({ sentence: before, isContent: before.trim().length > 0 });
+      }
+    }
+    parts.push({ sentence: match[0], isContent: match[0].trim().length > 0 });
+    lastIndex = sentenceRegex.lastIndex;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    const remaining = text.slice(lastIndex);
+    parts.push({ sentence: remaining, isContent: remaining.trim().length > 0 });
+  }
+
+  // If no sentences found, return the whole text
+  if (parts.length === 0 && text.length > 0) {
+    parts.push({ sentence: text, isContent: text.trim().length > 0 });
+  }
+
+  return parts;
+}
 
 async function callAPI(
   systemPrompt: string,
@@ -57,42 +92,52 @@ function getUserMessage(
 ): string {
   switch (action) {
     case "ANALYZE":
-      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}`;
+      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}${USER_PROMPT_PREFIXES.ANALYZE_SUFFIX}`;
     case "SUMMARIZE":
-      return `${USER_PROMPT_PREFIXES.SUMMARIZE}${text}`;
+      return `${USER_PROMPT_PREFIXES.SUMMARIZE}${text}${USER_PROMPT_PREFIXES.SUMMARIZE_SUFFIX}`;
     case "PARAPHRASE":
-      return `${USER_PROMPT_PREFIXES.PARAPHRASE}${text}`;
+      return `${USER_PROMPT_PREFIXES.PARAPHRASE}${text}${USER_PROMPT_PREFIXES.PARAPHRASE_SUFFIX}`;
     case "TONE_REWRITE": {
       const tone = options?.tone || "formal";
-      return `${TONE_PROMPT_PREFIX[tone]}${text}`;
+      return `${TONE_PROMPT_PREFIX[tone]}${text}${TONE_PROMPT_SUFFIX}`;
     }
     case "CUSTOM": {
       const instruction = options?.customInstruction || "";
-      return `${USER_PROMPT_PREFIXES.CUSTOM}${instruction}\n\n${text}`;
+      return `${USER_PROMPT_PREFIXES.CUSTOM}${instruction}\n${text}${USER_PROMPT_PREFIXES.CUSTOM_SUFFIX}`;
     }
     default:
-      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}`;
+      return `${USER_PROMPT_PREFIXES.ANALYZE}${text}${USER_PROMPT_PREFIXES.ANALYZE_SUFFIX}`;
   }
 }
 
-async function processLineByLine(text: string): Promise<string> {
-  const lines = text.split("\n");
-  const correctedLines: string[] = [];
+async function processSentencesInParallel(text: string): Promise<string> {
+  const parts = splitIntoSentences(text);
+  console.log("[Lintly API] Split into", parts.length, "parts");
 
-  for (const line of lines) {
-    // Skip empty lines - preserve them as-is
-    if (line.trim() === "") {
-      correctedLines.push(line);
-      continue;
-    }
+  // Process all sentences in parallel
+  const results = await Promise.all(
+    parts.map(async ({ sentence, isContent }, index) => {
+      // Skip non-content (whitespace only)
+      if (!isContent) {
+        return sentence;
+      }
 
-    const userMessage = getUserMessage("ANALYZE", line);
-    const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
-    // Trim to remove any extra whitespace the model might add
-    correctedLines.push(corrected.trim());
-  }
+      const trimmedSentence = sentence.trim();
 
-  return correctedLines.join("\n");
+      // Call API
+      console.log(`[Lintly API] Processing sentence ${index + 1}:`, trimmedSentence.substring(0, 30) + "...");
+      const userMessage = getUserMessage("ANALYZE", trimmedSentence);
+      const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
+      const trimmedCorrected = corrected.trim();
+
+      // Preserve original whitespace around the sentence
+      const leadingWs = sentence.match(/^\s*/)?.[0] || "";
+      const trailingWs = sentence.match(/\s*$/)?.[0] || "";
+      return leadingWs + trimmedCorrected + trailingWs;
+    })
+  );
+
+  return results.join("");
 }
 
 async function processText(
@@ -103,8 +148,8 @@ async function processText(
   console.log("[Lintly API] Processing action:", action);
 
   if (action === "ANALYZE") {
-    // Process line-by-line to preserve line breaks
-    const correctedText = await processLineByLine(text);
+    // Process sentences in parallel for faster results
+    const correctedText = await processSentencesInParallel(text);
     console.log(
       "[Lintly API] Corrected text:",
       correctedText.substring(0, 100) + "..."

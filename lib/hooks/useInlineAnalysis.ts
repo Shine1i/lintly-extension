@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import type { AnalyzeResult, Issue, ProcessResponse } from "../types";
 import type { SentenceRange } from "../sentences";
 import { mergeIssuesForSentence } from "../issueMerge";
+import { rebaseIssueOffsets } from "../issueOffsets";
 
 export interface InlineAnalysisState {
   isAnalyzing: boolean;
@@ -24,6 +25,8 @@ interface UseInlineAnalysisReturn {
   clearResult: () => void;
   /** Keep UI responsive by removing a single issue without a round-trip. */
   removeIssue: (issue: Issue) => void;
+  /** Align issue offsets after local edits without a full reanalysis. */
+  rebaseIssues: (originalText: string, updatedText: string) => void;
   /** Re-scan only the touched sentence to avoid full-document latency. */
   reanalyzeSentence: (
     fullText: string,
@@ -156,6 +159,18 @@ export function useInlineAnalysis(
     }));
   }, []);
 
+  const rebaseIssues = useCallback((originalText: string, updatedText: string) => {
+    if (!originalText || !updatedText || originalText === updatedText) {
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      issues: rebaseIssueOffsets(originalText, updatedText, prev.issues),
+      lastAnalyzedText: updatedText,
+    }));
+  }, []);
+
   const reanalyzeSentence = useCallback(
     async (
       fullText: string,
@@ -236,5 +251,5 @@ export function useInlineAnalysis(
     [minTextLength]
   );
 
-  return { state, analyze, clearResult, removeIssue, reanalyzeSentence };
+  return { state, analyze, clearResult, removeIssue, rebaseIssues, reanalyzeSentence };
 }

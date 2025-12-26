@@ -3,7 +3,13 @@ import { useAtom } from "jotai";
 import { LintlyModal } from "@/components/lintly/LintlyModal";
 import { SelectionToolbar } from "@/components/lintly/SelectionToolbar";
 import { InlineHighlightManager } from "@/components/lintly/InlineHighlightManager";
-import { getSelectionRect, type SelectionRect } from "@/lib/textPositioning";
+import {
+  applySelectionSnapshot,
+  captureSelectionSnapshot,
+  getSelectionRect,
+  type SelectionRect,
+  type SelectionSnapshot,
+} from "@/lib/textPositioning";
 import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
 import { appStateAtom } from "@/lib/state/lintlyAppState";
 import {
@@ -74,6 +80,7 @@ export default function App() {
   const [state, dispatch] = useAtom(appStateAtom);
   const sentenceAnalyzeIdRef = useRef(0);
   const processIdRef = useRef(0);
+  const selectionSnapshotRef = useRef<SelectionSnapshot | null>(null);
 
   const processText = useCallback(
     async (actionOverride?: Action, customInstruction?: string, textOverride?: string) => {
@@ -128,6 +135,12 @@ export default function App() {
     processIdRef.current++;
     dispatch({ type: "RESET" });
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!state.isVisible) {
+      selectionSnapshotRef.current = null;
+    }
+  }, [state.isVisible]);
 
   const reanalyzeSentenceRange = useCallback(
     async (
@@ -353,14 +366,14 @@ export default function App() {
           : state.sourceText;
 
     const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement) {
-      const start = activeElement.selectionStart ?? 0;
-      const end = activeElement.selectionEnd ?? activeElement.value.length;
-      const before = activeElement.value.slice(0, start);
-      const after = activeElement.value.slice(end);
-      activeElement.value = before + text + after;
-      activeElement.dispatchEvent(new Event("input", { bubbles: true }));
+    const storedSnapshot = selectionSnapshotRef.current;
+    const applied =
+      applySelectionSnapshot(storedSnapshot, text) ||
+      applySelectionSnapshot(captureSelectionSnapshot(activeElement), text);
+    if (!applied) {
+      console.log("[Lintly] Insert failed: no valid selection target");
     }
+    selectionSnapshotRef.current = null;
     dispatch({ type: "HIDE_MODAL" });
   }, [dispatch, state.result, state.sourceText]);
 
@@ -436,6 +449,10 @@ export default function App() {
       text = window.getSelection()?.toString().trim() || "";
     }
 
+    const snapshot = captureSelectionSnapshot(activeElement);
+    if (snapshot) {
+      selectionSnapshotRef.current = snapshot;
+    }
     const rect = state.selectionRect || getSelectionRect(activeElement);
     if (text && rect) {
       const position = calculateModalPosition(rect);
@@ -471,6 +488,10 @@ export default function App() {
           text = window.getSelection()?.toString().trim() || "";
         }
 
+        const snapshot = captureSelectionSnapshot(activeElement);
+        if (snapshot) {
+          selectionSnapshotRef.current = snapshot;
+        }
         const rect = getSelectionRect(activeElement);
         if (text && rect) {
           dispatch({ type: "HIDE_TOOLBAR" });
@@ -506,6 +527,10 @@ export default function App() {
         return;
       }
 
+      const snapshot = captureSelectionSnapshot(activeElement);
+      if (snapshot) {
+        selectionSnapshotRef.current = snapshot;
+      }
       let rect = getSelectionRect(activeElement);
 
       if (!rect || (rect.top === 0 && rect.left === 0)) {

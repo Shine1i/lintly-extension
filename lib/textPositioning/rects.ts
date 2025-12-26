@@ -1,5 +1,5 @@
 import { getTextareaTextRects } from "./mirror";
-import { buildTextNodeRanges } from "./textNodes";
+import { extractContentEditableText } from "./textNodes";
 
 function getTextNodeRangeRects(
   element: HTMLElement,
@@ -8,7 +8,7 @@ function getTextNodeRangeRects(
 ): DOMRect[] {
   if (startIndex >= endIndex) return [];
 
-  const textNodes = buildTextNodeRanges(element);
+  const { ranges: textNodes } = extractContentEditableText(element);
   const rects: DOMRect[] = [];
 
   for (const textNode of textNodes) {
@@ -49,7 +49,7 @@ export function getTextRangeRects(
     const textLength =
       element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement
         ? (element as HTMLTextAreaElement | HTMLInputElement).value.length
-        : element.textContent?.length ?? 0;
+        : extractContentEditableText(element).text.length;
     if (textLength === 0) return [];
     if (rangeStart < textLength) {
       rangeEnd = rangeStart + 1;

@@ -96,8 +96,7 @@ function getElementTextLength(element: HTMLElement): number | null {
   }
 
   if (element.isContentEditable) {
-    const text = element.textContent;
-    return text ? text.length : 0;
+    return getElementText(element).length;
   }
 
   return null;
