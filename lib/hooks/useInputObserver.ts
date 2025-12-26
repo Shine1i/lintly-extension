@@ -53,6 +53,55 @@ function isValidEditableElement(element: Element | null): element is HTMLElement
   return element.isContentEditable;
 }
 
+function getContentEditableRoot(element: HTMLElement): HTMLElement {
+  let current: HTMLElement | null = element;
+  let lastEditable: HTMLElement = element;
+  while (current && current.isContentEditable) {
+    lastEditable = current;
+    const parent = current.parentElement;
+    if (!parent || !parent.isContentEditable) {
+      break;
+    }
+    current = parent;
+  }
+  return lastEditable;
+}
+
+function resolveEditableTarget(event: Event): HTMLElement | null {
+  const candidates: EventTarget[] = [];
+  if (event.target) {
+    candidates.push(event.target);
+  }
+  if (typeof event.composedPath === "function") {
+    for (const entry of event.composedPath()) {
+      if (entry && entry !== event.target) {
+        candidates.push(entry);
+      }
+    }
+  }
+  if (document.activeElement) {
+    candidates.push(document.activeElement);
+  }
+
+  for (const candidate of candidates) {
+    let current: HTMLElement | null = null;
+    if (candidate instanceof HTMLElement) {
+      current = candidate;
+    } else if (candidate instanceof Node) {
+      current = candidate.parentElement;
+    }
+
+    while (current) {
+      if (isValidEditableElement(current)) {
+        return current.isContentEditable ? getContentEditableRoot(current) : current;
+      }
+      current = current.parentElement;
+    }
+  }
+
+  return null;
+}
+
 function shouldExclude(element: HTMLElement, excludeSelectors: string[]): boolean {
   for (const selector of excludeSelectors) {
     try {
@@ -116,7 +165,7 @@ function isShadowRootNode(node: Node | null): boolean {
 }
 
 type PendingInputInfo = {
-  target: EventTarget | null;
+  target: HTMLElement | null;
   inputType: string;
   dataLength: number | null;
   selectionLength: number | null;
@@ -204,15 +253,13 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     (e: Event) => {
       if (!opts.enabled || isSelectingRef.current) return;
 
-      const target = e.target;
-      if (!isValidEditableElement(target as Element)) return;
-
-      const element = target as HTMLElement;
+      const element = resolveEditableTarget(e);
+      if (!element) return;
       if (shouldExclude(element, opts.excludeSelectors)) return;
 
       const inputEvent = e as InputEvent;
       pendingInputRef.current = {
-        target: e.target,
+        target: element,
         inputType: inputEvent.inputType || "",
         dataLength: typeof inputEvent.data === "string" ? inputEvent.data.length : null,
         selectionLength: getSelectionLength(element),
@@ -225,10 +272,8 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     (e: Event) => {
       if (!opts.enabled || isSelectingRef.current) return;
 
-      const target = e.target;
-      if (!isValidEditableElement(target as Element)) return;
-
-      const element = target as HTMLElement;
+      const element = resolveEditableTarget(e);
+      if (!element) return;
       if (shouldExclude(element, opts.excludeSelectors)) return;
 
       if (activeElementRef.current !== element) {
@@ -269,9 +314,13 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     (e: Event) => {
       if (!opts.enabled) return;
 
-      const target = e.target;
-      if (!isValidEditableElement(target as Element)) return;
-      if (target !== activeElementRef.current) return;
+      const element = resolveEditableTarget(e);
+      if (!element) return;
+      if (shouldExclude(element, opts.excludeSelectors)) return;
+
+      if (activeElementRef.current !== element) {
+        setActiveElement(element);
+      }
 
       if (!isTypingRef.current) {
         isTypingRef.current = true;
@@ -280,17 +329,15 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
 
       scheduleStableText();
     },
-    [opts.enabled, scheduleStableText]
+    [opts.enabled, opts.excludeSelectors, scheduleStableText, setActiveElement]
   );
 
   const handleFocusIn = useCallback(
     (e: FocusEvent) => {
       if (!opts.enabled) return;
 
-      const target = e.target;
-      if (!isValidEditableElement(target as Element)) return;
-
-      const element = target as HTMLElement;
+      const element = resolveEditableTarget(e);
+      if (!element) return;
       if (shouldExclude(element, opts.excludeSelectors)) return;
 
       if (state.activeElement !== element) {

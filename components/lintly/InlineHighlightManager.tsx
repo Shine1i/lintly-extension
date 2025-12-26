@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useMemo } from "react";
 import { useInputObserver } from "@/lib/hooks/useInputObserver";
+import { useScrollSync } from "@/lib/hooks/useScrollSync";
 import { useInlineAnalysis } from "@/lib/hooks/useInlineAnalysis";
 import { HighlightOverlay, type IssueFixContext } from "./HighlightOverlay";
 import type { Issue } from "@/lib/types";
@@ -28,11 +29,12 @@ export function InlineHighlightManager({
   minTextLength = 10,
   debounceMs = 400,
 }: InlineHighlightManagerProps) {
-  const { activeElement, text, isTyping, elementRect, charDelta, changePosition } = useInputObserver({
+  const { activeElement, text, isTyping, charDelta, changePosition } = useInputObserver({
     enabled: isEnabled,
     minTextLength,
     debounceMs,
   });
+  const { pagePosition } = useScrollSync(activeElement);
 
   const {
     state: analysisState,
@@ -48,26 +50,19 @@ export function InlineHighlightManager({
   const skipNextAnalyzeRef = useRef(false);
 
   const indicatorPosition = useMemo(() => {
-    if (!elementRect || !activeElement) return null;
+    if (!pagePosition || !activeElement) return null;
     const style = window.getComputedStyle(activeElement);
-    const fontSize = Number.parseFloat(style.fontSize) || 14;
     const paddingRight = Number.parseFloat(style.paddingRight) || 0;
     const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
-    const fallbackInset = Math.round(fontSize * 0.35);
-    const paddingInset =
-      paddingRight > 0 && paddingBottom > 0
-        ? Math.min(paddingRight, paddingBottom)
-        : paddingRight > 0
-        ? paddingRight
-        : paddingBottom > 0
-        ? paddingBottom
-        : fallbackInset;
-    const inset = Math.max(4, Math.min(12, Math.round(paddingInset)));
+    const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+    const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+    const rightEdge = pagePosition.pageLeft + pagePosition.width;
+    const bottomEdge = pagePosition.pageTop + pagePosition.height;
     return {
-      x: elementRect.right + window.scrollX - inset,
-      y: elementRect.bottom + window.scrollY - inset,
+      x: rightEdge - paddingRight - borderRight,
+      y: bottomEdge - paddingBottom - borderBottom,
     };
-  }, [activeElement, elementRect]);
+  }, [activeElement, pagePosition]);
 
   useEffect(() => {
     const prevElement = prevElementRef.current;
