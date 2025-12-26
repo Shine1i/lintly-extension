@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Issue } from "../lib/types";
-import { assignIssueOffsetsFromCorrection } from "../lib/issueOffsets";
+import { assignIssueOffsetsFromCorrection, rebaseIssueOffsets } from "../lib/issueOffsets";
 
 const baseIssue: Omit<Issue, "original" | "suggestion"> = {
   type: "grammar",
@@ -72,5 +72,27 @@ describe("assignIssueOffsetsFromCorrection", () => {
     expect(result[0]?.end).toBe(6);
     expect(result[1]?.start).toBe(12);
     expect(result[1]?.end).toBe(17);
+  });
+});
+
+describe("rebaseIssueOffsets", () => {
+  it("shifts offsets forward when text expands earlier", () => {
+    const original = "First. Second is here.";
+    const corrected = "First changed. Second is here.";
+    const start = original.indexOf("is", original.indexOf("Second"));
+    const issues: Issue[] = [
+      {
+        ...baseIssue,
+        original: "is",
+        suggestion: "are",
+        start,
+        end: start + 2,
+      },
+    ];
+
+    const result = rebaseIssueOffsets(original, corrected, issues);
+    const expectedStart = corrected.indexOf("is", corrected.indexOf("Second"));
+    expect(result[0]?.start).toBe(expectedStart);
+    expect(result[0]?.end).toBe(expectedStart + 2);
   });
 });

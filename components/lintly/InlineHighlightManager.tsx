@@ -39,6 +39,7 @@ export function InlineHighlightManager({
     analyze,
     clearResult,
     removeIssue,
+    rebaseIssues,
     reanalyzeSentence,
   } = useInlineAnalysis({ minTextLength });
 
@@ -99,6 +100,7 @@ export function InlineHighlightManager({
   const handleIssueFixed = useCallback(
     async ({ issue, sentenceAnchor, sentenceIssues }: IssueFixContext) => {
       console.log("[Lintly] Fix applied:", issue.original, "→", issue.suggestion);
+      const previousText = analysisState.lastAnalyzedText;
       const issuesToRemove =
         sentenceIssues && sentenceIssues.length > 0 ? sentenceIssues : [issue];
       const seen = new Set<Issue>();
@@ -108,11 +110,15 @@ export function InlineHighlightManager({
         removeIssue(issueToRemove);
       }
 
+      const fullText = activeElement ? getElementText(activeElement) : "";
+      if (activeElement && previousText && fullText && previousText !== fullText) {
+        rebaseIssues(previousText, fullText);
+      }
+
       if (!activeElement || sentenceAnchor < 0) {
         return;
       }
 
-      const fullText = getElementText(activeElement);
       const sentenceRange = findSentenceRangeAt(getSentenceRanges(fullText), sentenceAnchor);
       if (!sentenceRange) {
         return;
@@ -123,7 +129,7 @@ export function InlineHighlightManager({
         skipIssueClear: Boolean(sentenceIssues && sentenceIssues.length > 0),
       });
     },
-    [activeElement, removeIssue, reanalyzeSentence]
+    [activeElement, analysisState.lastAnalyzedText, removeIssue, rebaseIssues, reanalyzeSentence]
   );
 
   if (!isEnabled || !activeElement) {

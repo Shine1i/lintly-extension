@@ -169,6 +169,40 @@ export function assignIssueOffsetsFromCorrection(
   });
 }
 
+export function rebaseIssueOffsets(
+  originalText: string,
+  updatedText: string,
+  issues: Issue[]
+): Issue[] {
+  if (!issues || issues.length === 0) {
+    return [];
+  }
+
+  if (originalText === updatedText) {
+    return issues;
+  }
+
+  const dmp = new DiffMatchPatch();
+  const diffs = dmp.diff_main(originalText, updatedText, false);
+
+  return issues.map((issue) => {
+    if (!Number.isInteger(issue.start) || !Number.isInteger(issue.end)) {
+      return issue;
+    }
+
+    const start = mapIndexFromDiffs(diffs, issue.start as number);
+    const end = mapIndexFromDiffs(diffs, issue.end as number);
+    const safeStart = Math.min(Math.max(0, start), updatedText.length);
+    const safeEnd = Math.min(Math.max(safeStart, end), updatedText.length);
+
+    return {
+      ...issue,
+      start: safeStart,
+      end: safeEnd,
+    };
+  });
+}
+
 function tokenizeWithWhitespace(text: string): string[] {
   if (!text) return [];
   const tokens = text.match(/\s+|[^\s]+/g);
