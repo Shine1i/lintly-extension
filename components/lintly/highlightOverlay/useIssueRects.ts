@@ -23,6 +23,7 @@ interface UseIssueRectsOptions {
   elementPosition: ElementPosition | null;
   scrollPosition: ScrollPosition;
   layoutVersion: number;
+  uiRoot?: HTMLElement | null;
 }
 
 interface UseIssueRectsResult {
@@ -46,6 +47,7 @@ export function useIssueRects({
   elementPosition: _elementPosition,
   scrollPosition,
   layoutVersion,
+  uiRoot = null,
 }: UseIssueRectsOptions): UseIssueRectsResult {
   // Content-relative rects (relative to element's full scrollable content, not visual area)
   const [issueContentRects, setIssueContentRects] = useState<Map<string, RectBox[]>>(new Map());
@@ -60,6 +62,23 @@ export function useIssueRects({
   );
   const rectMeasureIdRef = useRef(0);
   const rectMeasureRafRef = useRef<number | null>(null);
+
+  const isUiElement = useCallback(
+    (element: Element) => {
+      if (!uiRoot) return false;
+      if (uiRoot.contains(element)) return true;
+      const root = uiRoot.getRootNode();
+      if (root instanceof ShadowRoot) {
+        const host = root.host;
+        if (host === element) return true;
+        if (element instanceof HTMLElement && element.closest("[data-wxt-shadow-root]") === host) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [uiRoot]
+  );
 
   useEffect(() => {
     if (!targetElement || issues.length === 0) {
@@ -332,8 +351,15 @@ export function useIssueRects({
           const viewportTop = elementRect.top + rect.top - scrollPosition.scrollTop;
           const centerX = viewportLeft + rect.width / 2;
           const centerY = viewportTop + rect.height / 2;
-          const hit = document.elementFromPoint(centerX, centerY);
-          return Boolean(hit && targetElement?.contains(hit));
+          const elementsAtPoint = document.elementsFromPoint
+            ? document.elementsFromPoint(centerX, centerY)
+            : (() => {
+                const hit = document.elementFromPoint(centerX, centerY);
+                return hit ? [hit] : [];
+              })();
+          const hit = elementsAtPoint.find((element) => !isUiElement(element));
+          if (!hit) return true;
+          return Boolean(targetElement?.contains(hit));
         });
         if (visible.length > 0) {
           filtered.set(issueId, visible);
@@ -349,7 +375,7 @@ export function useIssueRects({
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [renderedRects, scrollPosition, layoutVersion, targetElement, occlusionEnabled]);
+  }, [renderedRects, scrollPosition, layoutVersion, targetElement, occlusionEnabled, isUiElement]);
 
   const occlusionReady =
     occlusionEnabled && lastOcclusionRef.current.layoutVersion === layoutVersion;

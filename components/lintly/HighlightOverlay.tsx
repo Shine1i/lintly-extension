@@ -22,6 +22,7 @@ import {
   toLocalRects,
   type RectBox,
 } from "./highlightOverlay/geometry";
+import { useShadowContainer } from "@/lib/ShadowDOMContext";
 
 function getInlineHighlightClass(severity: Issue["severity"]): string {
   switch (severity) {
@@ -70,6 +71,7 @@ export function HighlightOverlay({
   charDelta = 0,
   changePosition = 0,
 }: HighlightOverlayProps) {
+  const shadowContainer = useShadowContainer();
   const { scrollPosition, elementPosition, pagePosition, layoutVersion } = useScrollSync(targetElement);
   const resolvedText = useMemo(() => {
     if (!targetElement) {
@@ -111,6 +113,7 @@ export function HighlightOverlay({
     elementPosition,
     scrollPosition,
     layoutVersion,
+    uiRoot: shadowContainer,
   });
 
   const [activeSentenceRange, setActiveSentenceRange] = useState<SentenceRange | null>(null);
