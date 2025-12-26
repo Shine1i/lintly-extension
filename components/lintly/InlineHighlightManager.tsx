@@ -84,8 +84,9 @@ export function InlineHighlightManager({
       return;
     }
 
-    if (text && text.length >= minTextLength) {
-      analyze(text);
+    const analysisText = getElementText(activeElement);
+    if (analysisText && analysisText.length >= minTextLength) {
+      analyze(analysisText);
     } else {
       clearResult();
     }
