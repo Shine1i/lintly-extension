@@ -7,13 +7,16 @@ function replaceTextNodeRange(
   node: Text,
   startOffset: number,
   endOffset: number,
-  replacement: string
+  replacement: string,
+  dispatchInput: boolean = true
 ): boolean {
   if (startOffset < 0 || endOffset < startOffset || endOffset > node.length) {
     return false;
   }
   node.replaceData(startOffset, endOffset - startOffset, replacement);
-  element.dispatchEvent(new Event("input", { bubbles: true }));
+  if (dispatchInput) {
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   return true;
 }
 
@@ -119,6 +122,58 @@ export function applyFixToElement(
   return false;
 }
 
+export interface TextRangeReplacement {
+  startIndex: number;
+  endIndex: number;
+  replacement: string;
+}
+
+/**
+ * Apply multiple text range replacements to a contentEditable element in a single batch.
+ * Replacements should be sorted in descending order by startIndex to avoid position shifts.
+ * Only dispatches a single input event after all replacements are done.
+ */
+export function applyBatchTextRangeToElement(
+  element: HTMLElement,
+  replacements: TextRangeReplacement[]
+): boolean {
+  if (!element.isContentEditable || replacements.length === 0) return false;
+  if (isWordWebEditor(element)) return false;
+
+  const { text: fullText, ranges: textNodes } = extractContentEditableText(element);
+
+  // Build expected text by applying all replacements
+  let expectedText = fullText;
+  const sortedReplacements = [...replacements].sort((a, b) => b.startIndex - a.startIndex);
+
+  for (const r of sortedReplacements) {
+    if (r.startIndex < 0 || r.endIndex > expectedText.length) continue;
+    expectedText = expectedText.slice(0, r.startIndex) + r.replacement + expectedText.slice(r.endIndex);
+  }
+
+  // Apply all DOM changes without dispatching input events
+  for (const r of sortedReplacements) {
+    const resolved = resolveTextRangeNodes(textNodes, r.startIndex, r.endIndex);
+    if (!resolved) continue;
+    if (resolved.startNode !== resolved.endNode) continue;
+
+    replaceTextNodeRange(
+      element,
+      resolved.startNode,
+      resolved.startOffset,
+      resolved.endOffset,
+      r.replacement,
+      false // Don't dispatch input yet
+    );
+  }
+
+  // Dispatch single input event after all changes
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+
+  const nextText = extractContentEditableText(element).text;
+  return nextText === expectedText;
+}
+
 export function applyTextRangeToElement(
   element: HTMLElement,
   startIndex: number,
@@ -179,7 +234,19 @@ export function applyTextRangeToElement(
         resolved.endOffset,
         replacement
       );
-      return extractContentEditableText(element).text === expectedText;
+      const nextText = extractContentEditableText(element).text;
+      console.log("[Typix Apply] Verify", {
+        replacement,
+        startIndex,
+        expectedSlice: replacement,
+        actualSlice: nextText.slice(startIndex, startIndex + replacement.length),
+        nodeDataAfter: resolved.startNode.data.slice(0, 20),
+      });
+      if (nextText === expectedText) return true;
+      // For managed editors, check if at least the target position was replaced correctly
+      const replacedSlice = nextText.slice(startIndex, startIndex + replacement.length);
+      if (replacedSlice === replacement) return true;
+      return false;
     }
 
     const selection = window.getSelection();
@@ -200,6 +267,11 @@ export function applyTextRangeToElement(
       if (nextText !== originalText) {
         document.execCommand("undo");
       }
+      console.log("[Typix Apply] execCommand failed for managed editor", {
+        original: originalText.slice(startIndex, safeEnd),
+        replacement,
+        execCommandSuccess: success,
+      });
       return false;
     }
     if (!success || nextText === originalText) {

@@ -13,7 +13,7 @@ import {
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "/app/models/Typix-1.5re5-epo";
+const MODEL = "/app/models/Typix-1.5re5-epo-GPTQ";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
 

@@ -15,5 +15,10 @@ export {
   applySelectionSnapshot,
   type SelectionSnapshot,
 } from "./textPositioning/selection";
-export { applyFixToElement, applyTextRangeToElement } from "./textPositioning/applyFix";
+export {
+  applyFixToElement,
+  applyTextRangeToElement,
+  applyBatchTextRangeToElement,
+  type TextRangeReplacement,
+} from "./textPositioning/applyFix";
 export { isWordWebEditor, shouldAvoidDirectDomFallback } from "./textPositioning/editorDetection";

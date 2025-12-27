@@ -3,6 +3,7 @@ import type { Issue } from "@/lib/types";
 import {
   applyFixToElement,
   applyTextRangeToElement,
+  applyBatchTextRangeToElement,
   getElementText,
   getExplicitIssueRange,
   getTextRangeRects,
@@ -242,18 +243,14 @@ export function HighlightOverlay({
       }
 
       if (!success && sentenceContexts.length > 0) {
-        const orderedContexts = [...sentenceContexts].sort((a, b) => {
-          if (a.issueStart !== b.issueStart) return b.issueStart - a.issueStart;
-          return b.issueEnd - a.issueEnd;
-        });
-        success = orderedContexts.every((ctx) =>
-          applyTextRangeToElement(
-            targetElement,
-            ctx.issueStart,
-            ctx.issueEnd,
-            ctx.issue.suggestion
-          )
-        );
+        // Use batch replacement to apply all changes with a single input event
+        // This prevents managed editors from reverting earlier changes
+        const replacements = sentenceContexts.map((ctx) => ({
+          startIndex: ctx.issueStart,
+          endIndex: ctx.issueEnd,
+          replacement: ctx.issue.suggestion,
+        }));
+        success = applyBatchTextRangeToElement(targetElement, replacements);
       }
 
       if (!success) {
