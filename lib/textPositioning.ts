@@ -16,4 +16,4 @@ export {
   type SelectionSnapshot,
 } from "./textPositioning/selection";
 export { applyFixToElement, applyTextRangeToElement } from "./textPositioning/applyFix";
-export { isWordWebEditor } from "./textPositioning/editorDetection";
+export { isWordWebEditor, shouldAvoidDirectDomFallback } from "./textPositioning/editorDetection";

@@ -2,6 +2,21 @@ import { findAllOccurrences } from "./occurrences";
 import { isWordWebEditor, shouldAvoidDirectDomFallback } from "./editorDetection";
 import { extractContentEditableText, resolveTextRangeNodes } from "./textNodes";
 
+function replaceTextNodeRange(
+  element: HTMLElement,
+  node: Text,
+  startOffset: number,
+  endOffset: number,
+  replacement: string
+): boolean {
+  if (startOffset < 0 || endOffset < startOffset || endOffset > node.length) {
+    return false;
+  }
+  node.replaceData(startOffset, endOffset - startOffset, replacement);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}
+
 export function applyFixToElement(
   element: HTMLElement,
   original: string,
@@ -56,6 +71,22 @@ export function applyFixToElement(
     const resolved = resolveTextRangeNodes(textNodes, matchStart, matchEnd);
     if (!resolved) return false;
 
+    if (
+      avoidDirectFallback &&
+      resolved.startNode === resolved.endNode &&
+      resolved.startNode.data.slice(resolved.startOffset, resolved.endOffset) ===
+        originalText.slice(matchStart, matchEnd)
+    ) {
+      replaceTextNodeRange(
+        element,
+        resolved.startNode,
+        resolved.startOffset,
+        resolved.endOffset,
+        suggestion
+      );
+      return extractContentEditableText(element).text === expectedText;
+    }
+
     element.focus();
     const range = document.createRange();
     range.setStart(resolved.startNode, resolved.startOffset);
@@ -66,17 +97,18 @@ export function applyFixToElement(
 
     const success = document.execCommand("insertText", false, suggestion);
     let nextText = extractContentEditableText(element).text;
+    if (nextText === expectedText) return true;
     if (avoidDirectFallback) {
-      if (nextText !== originalText) return true;
-      return success;
-    }
-    if (nextText !== expectedText) {
-      if (!success || nextText === originalText) {
-        range.deleteContents();
-        range.insertNode(document.createTextNode(suggestion));
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        nextText = extractContentEditableText(element).text;
+      if (nextText !== originalText) {
+        document.execCommand("undo");
       }
+      return false;
+    }
+    if (!success || nextText === originalText) {
+      range.deleteContents();
+      range.insertNode(document.createTextNode(suggestion));
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      nextText = extractContentEditableText(element).text;
     }
 
     if (nextText === expectedText) return true;
@@ -134,6 +166,22 @@ export function applyTextRangeToElement(
     const resolved = resolveTextRangeNodes(textNodes, startIndex, safeEnd);
     if (!resolved) return false;
 
+    if (
+      avoidDirectFallback &&
+      resolved.startNode === resolved.endNode &&
+      resolved.startNode.data.slice(resolved.startOffset, resolved.endOffset) ===
+        originalText.slice(startIndex, safeEnd)
+    ) {
+      replaceTextNodeRange(
+        element,
+        resolved.startNode,
+        resolved.startOffset,
+        resolved.endOffset,
+        replacement
+      );
+      return extractContentEditableText(element).text === expectedText;
+    }
+
     const selection = window.getSelection();
     if (!selection) return false;
 
@@ -147,17 +195,18 @@ export function applyTextRangeToElement(
 
     const success = document.execCommand("insertText", false, replacement);
     let nextText = extractContentEditableText(element).text;
+    if (nextText === expectedText) return true;
     if (avoidDirectFallback) {
-      if (nextText !== originalText) return true;
-      return success;
-    }
-    if (nextText !== expectedText) {
-      if (!success || nextText === originalText) {
-        range.deleteContents();
-        range.insertNode(document.createTextNode(replacement));
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        nextText = extractContentEditableText(element).text;
+      if (nextText !== originalText) {
+        document.execCommand("undo");
       }
+      return false;
+    }
+    if (!success || nextText === originalText) {
+      range.deleteContents();
+      range.insertNode(document.createTextNode(replacement));
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      nextText = extractContentEditableText(element).text;
     }
 
     if (nextText === expectedText) return true;

@@ -6,6 +6,7 @@ import {
   getElementText,
   getExplicitIssueRange,
   getTextRangeRects,
+  shouldAvoidDirectDomFallback,
 } from "@/lib/textPositioning";
 import { useScrollSync } from "@/lib/hooks/useScrollSync";
 import { HighlightSpan } from "./HighlightSpan";
@@ -226,7 +227,8 @@ export function HighlightOverlay({
         : [];
 
       let success = false;
-      if (context) {
+      const avoidSentenceReplace = shouldAvoidDirectDomFallback(targetElement);
+      if (context && !avoidSentenceReplace) {
         const correctedSentence = applyIssuesToSentence(
           context.sentence.coreText,
           sentenceContexts.length > 0 ? sentenceContexts : [context]
