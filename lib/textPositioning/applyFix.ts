@@ -1,4 +1,5 @@
 import { findAllOccurrences } from "./occurrences";
+import { shouldAvoidDirectDomFallback } from "./editorDetection";
 import { extractContentEditableText, resolveTextRangeNodes } from "./textNodes";
 
 export function applyFixToElement(
@@ -47,8 +48,7 @@ export function applyFixToElement(
     const originalText = fullText;
     const expectedText =
       fullText.slice(0, matchStart) + suggestion + fullText.slice(matchEnd);
-    const useExecCommand = !element.hasAttribute("data-lexical-editor");
-
+    const avoidDirectFallback = shouldAvoidDirectDomFallback(element);
     const resolved = resolveTextRangeNodes(textNodes, matchStart, matchEnd);
     if (!resolved) return false;
 
@@ -57,29 +57,26 @@ export function applyFixToElement(
     range.setStart(resolved.startNode, resolved.startOffset);
     range.setEnd(resolved.endNode, resolved.endOffset);
 
-    if (useExecCommand) {
-      selection.removeAllRanges();
-      selection.addRange(range);
+    selection.removeAllRanges();
+    selection.addRange(range);
 
-      const success = document.execCommand("insertText", false, suggestion);
-      let nextText = extractContentEditableText(element).text;
-      if (nextText !== expectedText) {
-        if (!success || nextText === originalText) {
-          range.deleteContents();
-          range.insertNode(document.createTextNode(suggestion));
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          nextText = extractContentEditableText(element).text;
-        }
+    const success = document.execCommand("insertText", false, suggestion);
+    let nextText = extractContentEditableText(element).text;
+    if (avoidDirectFallback) {
+      if (nextText !== originalText) return true;
+      return success;
+    }
+    if (nextText !== expectedText) {
+      if (!success || nextText === originalText) {
+        range.deleteContents();
+        range.insertNode(document.createTextNode(suggestion));
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        nextText = extractContentEditableText(element).text;
       }
-
-      if (nextText === expectedText) return true;
-      if (nextText === originalText) return false;
-      return true;
     }
 
-    range.deleteContents();
-    range.insertNode(document.createTextNode(suggestion));
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+    if (nextText === expectedText) return true;
+    if (nextText === originalText) return false;
     return true;
   }
 
@@ -125,8 +122,7 @@ export function applyTextRangeToElement(
     const originalText = fullText;
     const expectedText =
       fullText.slice(0, startIndex) + replacement + fullText.slice(safeEnd);
-    const useExecCommand = !element.hasAttribute("data-lexical-editor");
-
+    const avoidDirectFallback = shouldAvoidDirectDomFallback(element);
     const resolved = resolveTextRangeNodes(textNodes, startIndex, safeEnd);
     if (!resolved) return false;
 
@@ -138,29 +134,26 @@ export function applyTextRangeToElement(
     range.setStart(resolved.startNode, resolved.startOffset);
     range.setEnd(resolved.endNode, resolved.endOffset);
 
-    if (useExecCommand) {
-      selection.removeAllRanges();
-      selection.addRange(range);
+    selection.removeAllRanges();
+    selection.addRange(range);
 
-      const success = document.execCommand("insertText", false, replacement);
-      let nextText = extractContentEditableText(element).text;
-      if (nextText !== expectedText) {
-        if (!success || nextText === originalText) {
-          range.deleteContents();
-          range.insertNode(document.createTextNode(replacement));
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          nextText = extractContentEditableText(element).text;
-        }
+    const success = document.execCommand("insertText", false, replacement);
+    let nextText = extractContentEditableText(element).text;
+    if (avoidDirectFallback) {
+      if (nextText !== originalText) return true;
+      return success;
+    }
+    if (nextText !== expectedText) {
+      if (!success || nextText === originalText) {
+        range.deleteContents();
+        range.insertNode(document.createTextNode(replacement));
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        nextText = extractContentEditableText(element).text;
       }
-
-      if (nextText === expectedText) return true;
-      if (nextText === originalText) return false;
-      return true;
     }
 
-    range.deleteContents();
-    range.insertNode(document.createTextNode(replacement));
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+    if (nextText === expectedText) return true;
+    if (nextText === originalText) return false;
     return true;
   }
 

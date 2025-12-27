@@ -1,6 +1,7 @@
 import type { SelectionRect } from "./types";
 import { getTextareaSelectionRect } from "./mirror";
 import { applyTextRangeToElement } from "./applyFix";
+import { shouldAvoidDirectDomFallback } from "./editorDetection";
 import { extractContentEditableText } from "./textNodes";
 
 export function getSelectionRect(activeElement?: Element | null): SelectionRect | null {
@@ -146,6 +147,9 @@ export function applySelectionSnapshot(
 
   const success = document.execCommand("insertText", false, replacement);
   if (!success) {
+    if (shouldAvoidDirectDomFallback(snapshot.element)) {
+      return false;
+    }
     range.deleteContents();
     range.insertNode(document.createTextNode(replacement));
     snapshot.element.dispatchEvent(new Event("input", { bubbles: true }));
