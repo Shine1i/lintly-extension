@@ -17,10 +17,85 @@ const MODEL = "/app/models/Typix-1.5re5-merged";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
 
+type UrlToken = { placeholder: string; url: string };
+
+const sentenceSegmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter("en", { granularity: "sentence" })
+    : null;
+
+const URL_REGEX =
+  /\b(?:https?:\/\/|www\.)[^\s<>()]+|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,})(?:\/[^\s<>()]*)?/gi;
+const URL_PLACEHOLDER_REGEX = /\[\[URL_\d+\]\]/g;
+const TRAILING_URL_PUNCTUATION = /[)\].,!?;:'"]$/;
+const MIN_LETTERS_FOR_ANALYSIS = 2;
+const MIN_LETTER_RATIO = 0.3;
+
+function splitTrailingPunctuation(value: string): { url: string; trailing: string } {
+  let url = value;
+  let trailing = "";
+  while (url && TRAILING_URL_PUNCTUATION.test(url)) {
+    trailing = url.slice(-1) + trailing;
+    url = url.slice(0, -1);
+  }
+  return { url, trailing };
+}
+
+function maskUrls(text: string): { maskedText: string; tokens: UrlToken[] } {
+  const tokens: UrlToken[] = [];
+  if (!text) {
+    return { maskedText: text, tokens };
+  }
+
+  const maskedText = text.replace(URL_REGEX, (match) => {
+    const { url, trailing } = splitTrailingPunctuation(match);
+    const placeholder = `[[URL_${tokens.length}]]`;
+    tokens.push({ placeholder, url });
+    return `${placeholder}${trailing}`;
+  });
+
+  return { maskedText, tokens };
+}
+
+function restoreUrls(text: string, tokens: UrlToken[]): string {
+  if (!tokens.length) return text;
+  let restored = text;
+  for (const { placeholder, url } of tokens) {
+    restored = restored.split(placeholder).join(url);
+  }
+  return restored;
+}
+
+function shouldAnalyzeSentence(maskedText: string): boolean {
+  const withoutUrls = maskedText.replace(URL_PLACEHOLDER_REGEX, "");
+  const cleaned = withoutUrls.replace(/\s+/g, " ").trim();
+  if (!cleaned) return false;
+
+  const letters = cleaned.match(/\p{L}/gu)?.length ?? 0;
+  if (letters < MIN_LETTERS_FOR_ANALYSIS) return false;
+
+  const compact = cleaned.replace(/\s/g, "");
+  if (!compact) return false;
+
+  const letterRatio = letters / compact.length;
+  return letterRatio >= MIN_LETTER_RATIO;
+}
+
 // Split text into sentences while preserving delimiters and whitespace
 function splitIntoSentences(text: string): { sentence: string; isContent: boolean }[] {
-  // Match sentences ending with . ! ? (with optional quotes) followed by space or end
-  const sentenceRegex = /[^.!?]*[.!?]+["']?\s*/g;
+  if (!text) return [];
+
+  if (sentenceSegmenter) {
+    const parts: { sentence: string; isContent: boolean }[] = [];
+    for (const segment of sentenceSegmenter.segment(text)) {
+      const sentence = segment.segment;
+      parts.push({ sentence, isContent: sentence.trim().length > 0 });
+    }
+    return parts.length > 0 ? parts : [{ sentence: text, isContent: text.trim().length > 0 }];
+  }
+
+  // Match sentences ending with . ! ? (with optional quotes) followed by whitespace or end.
+  const sentenceRegex = /[^.!?]*[.!?]+(?:["']?(?:\s+|$))/g;
   const parts: { sentence: string; isContent: boolean }[] = [];
   let lastIndex = 0;
   let match;
@@ -123,17 +198,25 @@ async function processSentencesInParallel(text: string): Promise<string> {
       }
 
       const trimmedSentence = sentence.trim();
+      const { maskedText, tokens } = maskUrls(trimmedSentence);
+      if (!shouldAnalyzeSentence(maskedText)) {
+        return sentence;
+      }
 
       // Call API
       console.log(`[Typix API] Processing sentence ${index + 1}:`, trimmedSentence.substring(0, 30) + "...");
-      const userMessage = getUserMessage("ANALYZE", trimmedSentence);
+      const userMessage = getUserMessage("ANALYZE", maskedText);
       const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
       const trimmedCorrected = corrected.trim();
+      if (tokens.length > 0 && tokens.some(({ placeholder }) => !trimmedCorrected.includes(placeholder))) {
+        return sentence;
+      }
+      const restoredCorrected = restoreUrls(trimmedCorrected, tokens);
 
       // Preserve original whitespace around the sentence
       const leadingWs = sentence.match(/^\s*/)?.[0] || "";
       const trailingWs = sentence.match(/\s*$/)?.[0] || "";
-      return leadingWs + trimmedCorrected + trailingWs;
+      return leadingWs + restoredCorrected + trailingWs;
     })
   );
 
