@@ -13,7 +13,7 @@ import {
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "/app/models/Typix-1.5re5-merged";
+const MODEL = "/app/models/Typix-1.5re5-epo";
 // const API_URL = "https://openai.studyon.app/api/chat/completions";
 // const MODEL = "google/gemini-2.5-flash-lite";
 
@@ -31,7 +31,10 @@ const TRAILING_URL_PUNCTUATION = /[)\].,!?;:'"]$/;
 const MIN_LETTERS_FOR_ANALYSIS = 2;
 const MIN_LETTER_RATIO = 0.3;
 
-function splitTrailingPunctuation(value: string): { url: string; trailing: string } {
+function splitTrailingPunctuation(value: string): {
+  url: string;
+  trailing: string;
+} {
   let url = value;
   let trailing = "";
   while (url && TRAILING_URL_PUNCTUATION.test(url)) {
@@ -82,7 +85,9 @@ function shouldAnalyzeSentence(maskedText: string): boolean {
 }
 
 // Split text into sentences while preserving delimiters and whitespace
-function splitIntoSentences(text: string): { sentence: string; isContent: boolean }[] {
+function splitIntoSentences(
+  text: string
+): { sentence: string; isContent: boolean }[] {
   if (!text) return [];
 
   if (sentenceSegmenter) {
@@ -91,7 +96,9 @@ function splitIntoSentences(text: string): { sentence: string; isContent: boolea
       const sentence = segment.segment;
       parts.push({ sentence, isContent: sentence.trim().length > 0 });
     }
-    return parts.length > 0 ? parts : [{ sentence: text, isContent: text.trim().length > 0 }];
+    return parts.length > 0
+      ? parts
+      : [{ sentence: text, isContent: text.trim().length > 0 }];
   }
 
   // Match sentences ending with . ! ? (with optional quotes) followed by whitespace or end.
@@ -204,11 +211,19 @@ async function processSentencesInParallel(text: string): Promise<string> {
       }
 
       // Call API
-      console.log(`[Typix API] Processing sentence ${index + 1}:`, trimmedSentence.substring(0, 30) + "...");
+      console.log(
+        `[Typix API] Processing sentence ${index + 1}:`,
+        trimmedSentence.substring(0, 30) + "..."
+      );
       const userMessage = getUserMessage("ANALYZE", maskedText);
       const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
       const trimmedCorrected = corrected.trim();
-      if (tokens.length > 0 && tokens.some(({ placeholder }) => !trimmedCorrected.includes(placeholder))) {
+      if (
+        tokens.length > 0 &&
+        tokens.some(
+          ({ placeholder }) => !trimmedCorrected.includes(placeholder)
+        )
+      ) {
         return sentence;
       }
       const restoredCorrected = restoreUrls(trimmedCorrected, tokens);

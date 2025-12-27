@@ -29,6 +29,110 @@ const DEFAULT_OPTIONS: Required<InputObserverOptions> = {
 const MAX_SHIFT_CHARS = 50;
 const MAX_SYNC_DELTA_LENGTH = 4000;
 
+const SENSITIVE_AUTOCOMPLETE_TOKENS = new Set([
+  "name",
+  "honorific-prefix",
+  "given-name",
+  "additional-name",
+  "family-name",
+  "nickname",
+  "username",
+  "current-password",
+  "new-password",
+  "one-time-code",
+  "email",
+  "tel",
+  "tel-country-code",
+  "tel-national",
+  "tel-area-code",
+  "tel-local",
+  "tel-local-prefix",
+  "tel-local-suffix",
+  "tel-extension",
+  "organization",
+  "street-address",
+  "address-line1",
+  "address-line2",
+  "address-line3",
+  "address-level1",
+  "address-level2",
+  "address-level3",
+  "address-level4",
+  "country",
+  "country-name",
+  "postal-code",
+  "cc-name",
+  "cc-number",
+  "cc-exp",
+  "cc-exp-month",
+  "cc-exp-year",
+  "cc-csc",
+  "cc-type",
+  "bday",
+  "bday-day",
+  "bday-month",
+  "bday-year",
+]);
+
+const SENSITIVE_KEYWORD_REGEXES = [
+  /\bpassword\b/,
+  /\bpasscode\b/,
+  /\bpin\b/,
+  /\botp\b/,
+  /\bone[- ]time\b/,
+  /\bmfa\b/,
+  /\b2fa\b/,
+  /\bauth(?:entication)?\s*code\b/,
+  /\bsecurity\s*code\b/,
+  /\bverification\s*code\b/,
+  /\btoken\b/,
+  /\bsecret\b/,
+  /\bapi\s*key\b/,
+  /\baccess\s*key\b/,
+  /\bprivate\s*key\b/,
+  /\bssh\s*key\b/,
+  /\bpgp\b/,
+  /\bgpg\b/,
+  /\bcredit\s*card\b/,
+  /\bcard\s*number\b/,
+  /\bcc[-_ ]?(?:number|num|csc|cvv|exp|expiry|expir|type|name)\b/,
+  /\bcvv\b/,
+  /\bcvc\b/,
+  /\bexpir(?:y|ation)\b/,
+  /\biban\b/,
+  /\brouting\b/,
+  /\bbank\b/,
+  /\baccount\s*number\b/,
+  /\bssn\b/,
+  /\bsocial\s*security\b/,
+  /\btax\s*id\b/,
+  /\bein\b/,
+  /\bpassport\b/,
+  /\bdriver'?s?\s*license\b/,
+  /\bdate\s*of\s*birth\b/,
+  /\bdob\b/,
+  /\be-?mail\b/,
+  /\bphone\b/,
+  /\bmobile\b/,
+  /\bcell\b/,
+  /\bfax\b/,
+  /\baddress\b/,
+  /\bstreet\b/,
+  /\bcity\b/,
+  /\bstate\b/,
+  /\bprovince\b/,
+  /\bzip\b/,
+  /\bpostal\b/,
+  /\bcountry\b/,
+  /\bfirst\s*name\b/,
+  /\blast\s*name\b/,
+  /\bfull\s*name\b/,
+  /\bmiddle\s*name\b/,
+  /\buser\s*name\b/,
+  /\busername\b/,
+  /\bname\b/,
+];
+
 const INITIAL_STATE: InputObserverState = {
   activeElement: null,
   text: "",
@@ -103,7 +207,80 @@ function resolveEditableTarget(event: Event): HTMLElement | null {
   return null;
 }
 
+function getAriaLabelledbyText(element: HTMLElement): string {
+  const raw = element.getAttribute("aria-labelledby");
+  if (!raw) return "";
+  const ids = raw.split(/\s+/).filter(Boolean);
+  if (ids.length === 0) return "";
+  const labels = ids
+    .map((id) => element.ownerDocument.getElementById(id)?.textContent || "")
+    .filter(Boolean);
+  return labels.join(" ");
+}
+
+function getAssociatedLabelText(element: HTMLElement): string {
+  const labels: string[] = [];
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    if (element.labels) {
+      for (const label of element.labels) {
+        if (label.textContent) {
+          labels.push(label.textContent);
+        }
+      }
+    }
+  }
+
+  const wrappedLabel = element.closest("label");
+  if (wrappedLabel?.textContent) {
+    labels.push(wrappedLabel.textContent);
+  }
+
+  return labels.join(" ");
+}
+
+function hasSensitiveAutocomplete(element: HTMLElement): boolean {
+  const autocomplete = element.getAttribute("autocomplete");
+  if (!autocomplete) return false;
+  const tokens = autocomplete.toLowerCase().split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    if (token.startsWith("section-")) {
+      continue;
+    }
+    if (SENSITIVE_AUTOCOMPLETE_TOKENS.has(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getElementDescriptorText(element: HTMLElement): string {
+  const className = typeof element.className === "string" ? element.className : "";
+  const parts = [
+    element.getAttribute("name"),
+    element.getAttribute("id"),
+    className,
+    element.getAttribute("placeholder"),
+    element.getAttribute("aria-label"),
+    getAriaLabelledbyText(element),
+    getAssociatedLabelText(element),
+    element.getAttribute("title"),
+  ];
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+function isSensitiveElement(element: HTMLElement): boolean {
+  if (hasSensitiveAutocomplete(element)) {
+    return true;
+  }
+  const descriptor = getElementDescriptorText(element);
+  if (!descriptor) return false;
+  return SENSITIVE_KEYWORD_REGEXES.some((regex) => regex.test(descriptor));
+}
+
 function shouldExclude(element: HTMLElement, excludeSelectors: string[]): boolean {
+  if (isSensitiveElement(element)) {
+    return true;
+  }
   for (const selector of excludeSelectors) {
     try {
       if (element.matches(selector) || element.closest(selector)) {
@@ -207,6 +384,17 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
       debounceTimerRef.current = null;
     }
   }, []);
+
+  const resetState = useCallback(() => {
+    clearDebounce();
+    activeElementRef.current = null;
+    isTypingRef.current = false;
+    isSelectingRef.current = false;
+    pendingInputRef.current = null;
+    lastStableTextRef.current = "";
+    lastStableLengthRef.current = 0;
+    setState(INITIAL_STATE);
+  }, [clearDebounce]);
 
   const commitStableText = useCallback(() => {
     const element = activeElementRef.current;
@@ -339,13 +527,18 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
 
       const element = resolveEditableTarget(e);
       if (!element) return;
-      if (shouldExclude(element, opts.excludeSelectors)) return;
+      if (shouldExclude(element, opts.excludeSelectors)) {
+        if (activeElementRef.current) {
+          resetState();
+        }
+        return;
+      }
 
       if (state.activeElement !== element) {
         setActiveElement(element);
       }
     },
-    [opts.enabled, opts.excludeSelectors, setActiveElement, state.activeElement]
+    [opts.enabled, opts.excludeSelectors, resetState, setActiveElement, state.activeElement]
   );
 
   const handleFocusOut = useCallback((e: FocusEvent) => {
@@ -354,6 +547,9 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
 
     // Delay to allow clicks on overlays without collapsing state.
     setTimeout(() => {
+      if (!activeElementRef.current) {
+        return;
+      }
       const newActive = document.activeElement;
       if (isValidEditableElement(newActive) && newActive !== target) {
         return;
@@ -438,12 +634,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
             node === state.activeElement ||
             (node instanceof Element && node.contains(state.activeElement))
           ) {
-            clearDebounce();
-            activeElementRef.current = null;
-            isTypingRef.current = false;
-            isSelectingRef.current = false;
-            lastStableTextRef.current = "";
-            setState(INITIAL_STATE);
+            resetState();
             return;
           }
         }
@@ -453,7 +644,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => observer.disconnect();
-  }, [state.activeElement, clearDebounce]);
+  }, [state.activeElement, resetState]);
 
   return state;
 }
