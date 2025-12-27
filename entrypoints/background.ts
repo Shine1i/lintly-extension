@@ -26,7 +26,11 @@ async function sendToOffscreen(msg: OffscreenMessage) {
   await setupOffscreen();
   for (let i = 0; i < 3; i++) {
     try {
-      return await browser.runtime.sendMessage(msg);
+      const response = await browser.runtime.sendMessage(msg);
+      if (response && !response.success) {
+        throw new Error(response.error || "Unknown offscreen error");
+      }
+      return response;
     } catch (e) {
       if (i === 2) throw e;
       await new Promise((r) => setTimeout(r, 200));

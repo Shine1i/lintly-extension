@@ -4,15 +4,6 @@ import type { SelectionRect } from "@/lib/textPositioning";
 
 type AppResult = string | AnalyzeResult | null;
 
-export interface BulkUndoState {
-  sourceText: string;
-  result: AppResult;
-  appliedCount: number;
-  skippedCount: number;
-  requestedCount: number;
-  timestamp: number;
-}
-
 export interface AppState {
   isVisible: boolean;
   isLoading: boolean;
@@ -26,7 +17,6 @@ export interface AppState {
   modalPosition: { x: number; y: number };
   selectionRect: SelectionRect | null;
   error: string | null;
-  bulkUndo: BulkUndoState | null;
 }
 
 export type AppAction =
@@ -34,14 +24,13 @@ export type AppAction =
   | { type: "HIDE_MODAL" }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_RESULT"; result: AppResult }
-  | { type: "SET_ERROR"; error: string }
+  | { type: "SET_ERROR"; error: string | null }
   | { type: "SET_SOURCE_TEXT"; text: string }
   | { type: "SET_TONE"; tone: Tone }
   | { type: "SET_ACTION"; action: Action }
   | { type: "SHOW_TOOLBAR"; position: { x: number; y: number }; selectionRect: SelectionRect }
   | { type: "HIDE_TOOLBAR" }
-  | { type: "RESET" }
-  | { type: "SET_BULK_UNDO"; bulkUndo: BulkUndoState | null };
+  | { type: "RESET" };
 
 export const initialAppState: AppState = {
   isVisible: false,
@@ -56,7 +45,6 @@ export const initialAppState: AppState = {
   modalPosition: { x: 100, y: 100 },
   selectionRect: null,
   error: null,
-  bulkUndo: null,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -74,7 +62,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         action: action.action ?? "ANALYZE",
         tone: action.tone ?? state.tone,
         isLoading: !!action.autoRun,
-        bulkUndo: null,
+        error: null,
       };
     case "HIDE_MODAL":
       return {
@@ -83,7 +71,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         result: null,
         originalResult: null,
         selectionRect: null,
-        bulkUndo: null,
+        error: null,
       };
     case "SET_LOADING":
       return { ...state, isLoading: action.loading };
@@ -94,6 +82,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         result: action.result,
         originalResult: isFirstResult ? action.result : state.originalResult,
         isLoading: false,
+        error: null,
       };
     }
     case "SET_ERROR":
@@ -115,12 +104,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         result: state.originalResult,
         isLoading: false,
         error: null,
-        bulkUndo: null,
-      };
-    case "SET_BULK_UNDO":
-      return {
-        ...state,
-        bulkUndo: action.bulkUndo,
       };
     default:
       return state;

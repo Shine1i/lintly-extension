@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, useMemo } from "react";
+import { AlertTriangle } from "lucide-react";
 import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
-import { BulkUndoBanner } from "./BulkUndoBanner";
 import { Button } from "@/components/ui/button";
 import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
-import type { BulkUndoState } from "@/lib/state/typixAppState";
 
 interface TypixModalProps {
   isVisible: boolean;
@@ -16,10 +15,10 @@ interface TypixModalProps {
   onToneChange: (tone: Tone) => void;
   isLoading: boolean;
   result: string | AnalyzeResult | null;
+  error: string | null;
+  onRetry: () => void;
   onApplyFix: (issue: Issue) => void;
   onApplyWordFix?: (issue: Issue) => void;
-  bulkUndo: BulkUndoState | null;
-  onUndoBulk: () => void;
   onCopy: () => void;
   onReset: () => void;
   onCustomSubmit: (instruction: string) => void;
@@ -37,10 +36,10 @@ export function TypixModal({
   onToneChange,
   isLoading,
   result,
+  error,
+  onRetry,
   onApplyFix,
   onApplyWordFix,
-  bulkUndo,
-  onUndoBulk,
   onCopy,
   onReset,
   onCustomSubmit,
@@ -161,21 +160,37 @@ export function TypixModal({
             onToneChange={onToneChange}
           />
 
-          {bulkUndo && (
-            <BulkUndoBanner
-              appliedCount={bulkUndo.appliedCount}
-              skippedCount={bulkUndo.skippedCount}
-              onUndo={onUndoBulk}
+          {error ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Something went wrong</p>
+                <p className="text-xs text-muted-foreground max-w-[280px]">
+                  {error.includes("API error") || error.includes("fetch")
+                    ? "Unable to connect to the server. Please check your connection and try again."
+                    : error}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-4 text-xs rounded-lg"
+                onClick={onRetry}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <TextSurface
+              text={displayText}
+              issues={issues}
+              onApplyFix={onApplyFix}
+              onApplyWordFix={onApplyWordFix}
+              isLoading={isLoading}
             />
           )}
-
-          <TextSurface
-            text={displayText}
-            issues={issues}
-            onApplyFix={onApplyFix}
-            onApplyWordFix={onApplyWordFix}
-            isLoading={isLoading}
-          />
 
           <div className="shrink-0 px-4 py-2 bg-muted/50 border-t border-border/50 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">

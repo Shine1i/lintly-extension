@@ -138,6 +138,11 @@ export default function App() {
     dispatch({ type: "RESET" });
   }, [dispatch]);
 
+  const handleRetry = useCallback(() => {
+    dispatch({ type: "SET_ERROR", error: null });
+    processText();
+  }, [dispatch, processText]);
+
   useEffect(() => {
     if (!state.isVisible) {
       selectionSnapshotRef.current = null;
@@ -199,7 +204,6 @@ export default function App() {
         return;
       }
 
-      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
       const contextsBySentence = groupIssueContextsBySentence(issueContexts);
       const context = issueContexts.get(issue);
@@ -270,7 +274,6 @@ export default function App() {
         return;
       }
 
-      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       const { issueContexts } = buildIssueSentenceContexts(state.sourceText, state.result.issues);
       const contextsBySentence = groupIssueContextsBySentence(issueContexts);
       const context = issueContexts.get(issue);
@@ -352,30 +355,11 @@ export default function App() {
     [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
   );
 
-  const handleUndoBulk = useCallback(() => {
-    if (!state.bulkUndo) {
-      return;
-    }
-
-    processIdRef.current++;
-
-    dispatch({ type: "SET_SOURCE_TEXT", text: state.bulkUndo.sourceText });
-    dispatch({ type: "SET_RESULT", result: state.bulkUndo.result });
-    dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
-
-    trackEvent("bulk_undo", {
-      requestedCount: state.bulkUndo.requestedCount,
-      appliedCount: state.bulkUndo.appliedCount,
-      skippedCount: state.bulkUndo.skippedCount,
-    });
-  }, [dispatch, state.bulkUndo]);
-
   const handleCustomSubmit = useCallback(
     (instruction: string) => {
-      dispatch({ type: "SET_BULK_UNDO", bulkUndo: null });
       processText("CUSTOM", instruction);
     },
-    [dispatch, processText]
+    [processText]
   );
 
   const handleInsert = useCallback(() => {
@@ -404,9 +388,6 @@ export default function App() {
     }
 
     const issues = state.result.issues;
-    const previousSourceText = state.sourceText;
-    const previousResult = state.result;
-
     let newText = state.sourceText;
     let appliedCount = 0;
     let skippedCount = 0;
@@ -436,17 +417,6 @@ export default function App() {
       result: {
         corrected_text: newText,
         issues: [],
-      },
-    });
-    dispatch({
-      type: "SET_BULK_UNDO",
-      bulkUndo: {
-        sourceText: previousSourceText,
-        result: previousResult,
-        requestedCount: issues.length,
-        appliedCount,
-        skippedCount,
-        timestamp: Date.now(),
       },
     });
 
@@ -630,10 +600,10 @@ export default function App() {
         onToneChange={(tone) => dispatch({ type: "SET_TONE", tone })}
         isLoading={state.isLoading}
         result={state.result}
+        error={state.error}
+        onRetry={handleRetry}
         onApplyFix={handleApplyFix}
         onApplyWordFix={handleApplyWordFix}
-        bulkUndo={state.bulkUndo}
-        onUndoBulk={handleUndoBulk}
         onCopy={handleCopy}
         onReset={handleReset}
         onCustomSubmit={handleCustomSubmit}
