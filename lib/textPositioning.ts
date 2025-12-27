@@ -1,6 +1,6 @@
 export type { SelectionRect, IssueRect } from "./textPositioning/types";
 export { setMirrorHost, cleanupMirrorCache, getTextareaSelectionRect } from "./textPositioning/mirror";
-export { findAllOccurrences } from "./textPositioning/occurrences";
+export { findAllOccurrences, getExplicitIssueRange } from "./textPositioning/occurrences";
 export { getTextRangeRects } from "./textPositioning/rects";
 export {
   sortIssuesByTextPosition,

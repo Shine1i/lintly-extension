@@ -7,6 +7,7 @@ import {
   applySelectionSnapshot,
   captureSelectionSnapshot,
   getSelectionRect,
+  getExplicitIssueRange,
   type SelectionRect,
   type SelectionSnapshot,
 } from "@/lib/textPositioning";
@@ -203,7 +204,15 @@ export default function App() {
       const context = issueContexts.get(issue);
 
       if (!context) {
-        const fallbackText = state.sourceText.replace(issue.original, issue.suggestion);
+        const explicitRange = getExplicitIssueRange(state.sourceText, issue);
+        if (!explicitRange && !issue.original) {
+          return;
+        }
+        const fallbackText = explicitRange
+          ? state.sourceText.slice(0, explicitRange.start) +
+            issue.suggestion +
+            state.sourceText.slice(explicitRange.end)
+          : state.sourceText.replace(issue.original, issue.suggestion);
         dispatch({ type: "SET_SOURCE_TEXT", text: fallbackText });
         dispatch({
           type: "SET_RESULT",
@@ -278,15 +287,26 @@ export default function App() {
           state.sourceText.slice(context.issueEnd);
         sentenceAnchor = context.sentence.coreStart;
       } else {
-        const index = state.sourceText.indexOf(issue.original);
-        if (index === -1) {
+        const explicitRange = getExplicitIssueRange(state.sourceText, issue);
+        if (explicitRange) {
+          newText =
+            state.sourceText.slice(0, explicitRange.start) +
+            issue.suggestion +
+            state.sourceText.slice(explicitRange.end);
+          sentenceAnchor = explicitRange.start;
+        } else if (issue.original) {
+          const index = state.sourceText.indexOf(issue.original);
+          if (index === -1) {
+            return;
+          }
+          newText =
+            state.sourceText.slice(0, index) +
+            issue.suggestion +
+            state.sourceText.slice(index + issue.original.length);
+          sentenceAnchor = index;
+        } else {
           return;
         }
-        newText =
-          state.sourceText.slice(0, index) +
-          issue.suggestion +
-          state.sourceText.slice(index + issue.original.length);
-        sentenceAnchor = index;
       }
 
       dispatch({ type: "SET_SOURCE_TEXT", text: newText });

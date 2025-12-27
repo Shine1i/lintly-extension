@@ -46,15 +46,24 @@ export function getTextRangeRects(
   let rangeEnd = endIndex;
 
   if (rangeStart === rangeEnd) {
-    const textLength =
+    const text =
       element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement
-        ? (element as HTMLTextAreaElement | HTMLInputElement).value.length
-        : extractContentEditableText(element).text.length;
-    if (textLength === 0) return [];
-    if (rangeStart < textLength) {
+        ? (element as HTMLTextAreaElement | HTMLInputElement).value
+        : extractContentEditableText(element).text;
+    const textLength = text.length;
+    if (textLength === 0 || rangeStart < 0 || rangeStart > textLength) return [];
+
+    const prevChar = rangeStart > 0 ? text[rangeStart - 1] : "";
+    const nextChar = rangeStart < textLength ? text[rangeStart] : "";
+
+    if (prevChar && /\s/.test(prevChar)) {
+      rangeStart -= 1;
+    } else if (nextChar && /\s/.test(nextChar)) {
+      rangeEnd = rangeStart + 1;
+    } else if (rangeStart < textLength) {
       rangeEnd = rangeStart + 1;
     } else if (rangeStart > 0) {
-      rangeStart = rangeStart - 1;
+      rangeStart -= 1;
     } else {
       return [];
     }

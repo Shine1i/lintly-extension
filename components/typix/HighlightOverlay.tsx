@@ -4,6 +4,7 @@ import {
   applyFixToElement,
   applyTextRangeToElement,
   getElementText,
+  getExplicitIssueRange,
   getTextRangeRects,
 } from "@/lib/textPositioning";
 import { useScrollSync } from "@/lib/hooks/useScrollSync";
@@ -73,9 +74,14 @@ export function HighlightOverlay({
 }: HighlightOverlayProps) {
   const shadowContainer = useShadowContainer();
   const animatedIssueIdsRef = useRef<Set<string>>(new Set());
-  const [animatingIssueIds, setAnimatingIssueIds] = useState<Set<string>>(new Set());
-  const animationTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const { scrollPosition, elementPosition, pagePosition, layoutVersion } = useScrollSync(targetElement);
+  const [animatingIssueIds, setAnimatingIssueIds] = useState<Set<string>>(
+    new Set()
+  );
+  const animationTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
+  const { scrollPosition, elementPosition, pagePosition, layoutVersion } =
+    useScrollSync(targetElement);
   const resolvedText = useMemo(() => {
     if (!targetElement) {
       return elementText ?? "";
@@ -105,21 +111,23 @@ export function HighlightOverlay({
     return map;
   }, [contextsBySentence]);
 
-  const { displayRects, clipBounds, issueOccurrenceIndices, removeIssueRects } = useIssueRects({
-    targetElement,
-    issues,
-    issueIdByIssue,
-    elementText: resolvedText,
-    isTyping,
-    charDelta,
-    changePosition,
-    elementPosition,
-    scrollPosition,
-    layoutVersion,
-    uiRoot: shadowContainer,
-  });
+  const { displayRects, clipBounds, issueOccurrenceIndices, removeIssueRects } =
+    useIssueRects({
+      targetElement,
+      issues,
+      issueIdByIssue,
+      elementText: resolvedText,
+      isTyping,
+      charDelta,
+      changePosition,
+      elementPosition,
+      scrollPosition,
+      layoutVersion,
+      uiRoot: shadowContainer,
+    });
 
-  const [activeSentenceRange, setActiveSentenceRange] = useState<SentenceRange | null>(null);
+  const [activeSentenceRange, setActiveSentenceRange] =
+    useState<SentenceRange | null>(null);
   // Content-relative rects for the active sentence
   const [activeSentenceRects, setActiveSentenceRects] = useState<RectBox[]>([]);
   const sentenceRectsCacheRef = useRef<Map<string, RectCacheEntry>>(new Map());
@@ -190,20 +198,26 @@ export function HighlightOverlay({
     [issueById, setActiveSentenceForIssue]
   );
 
-  const { popoverIssueId, anchorRect, handlePopoverHoverChange, handlePopoverOpenChange } =
-    useIssuePopover({
-      displayRects,
-      issueById,
-      issuesCount: issues.length,
-      targetElement,
-      scrollPosition,
-      onHoverIssueChange: handleHoverIssueChange,
-    });
+  const {
+    popoverIssueId,
+    anchorRect,
+    handlePopoverHoverChange,
+    handlePopoverOpenChange,
+  } = useIssuePopover({
+    displayRects,
+    issueById,
+    issuesCount: issues.length,
+    targetElement,
+    scrollPosition,
+    onHoverIssueChange: handleHoverIssueChange,
+  });
 
   const handleApplyFix = useCallback(
     (issue: Issue) => {
       const issueId = issueIdByIssue.get(issue);
-      const occurrenceIndex = issueId ? issueOccurrenceIndices.get(issueId) ?? 0 : 0;
+      const occurrenceIndex = issueId
+        ? issueOccurrenceIndices.get(issueId) ?? 0
+        : 0;
       const context = issueContexts.get(issue);
       const sentenceContexts = context
         ? contextsBySentence.get(context.sentenceIndex) || []
@@ -223,7 +237,34 @@ export function HighlightOverlay({
         );
       }
 
+      if (!success && sentenceContexts.length > 0) {
+        const orderedContexts = [...sentenceContexts].sort((a, b) => {
+          if (a.issueStart !== b.issueStart) return b.issueStart - a.issueStart;
+          return b.issueEnd - a.issueEnd;
+        });
+        success = orderedContexts.every((ctx) =>
+          applyTextRangeToElement(
+            targetElement,
+            ctx.issueStart,
+            ctx.issueEnd,
+            ctx.issue.suggestion
+          )
+        );
+      }
+
       if (!success) {
+        const explicitRange = getExplicitIssueRange(resolvedText, issue);
+        if (explicitRange) {
+          success = applyTextRangeToElement(
+            targetElement,
+            explicitRange.start,
+            explicitRange.end,
+            issue.suggestion
+          );
+        }
+      }
+
+      if (!success && issue.original) {
         success = applyFixToElement(
           targetElement,
           issue.original,
@@ -262,6 +303,7 @@ export function HighlightOverlay({
     [
       targetElement,
       onIssueFixed,
+      resolvedText,
       issueOccurrenceIndices,
       issueContexts,
       issueIdByIssue,
@@ -273,7 +315,9 @@ export function HighlightOverlay({
   const handleApplyWordFix = useCallback(
     (issue: Issue) => {
       const issueId = issueIdByIssue.get(issue);
-      const occurrenceIndex = issueId ? issueOccurrenceIndices.get(issueId) ?? 0 : 0;
+      const occurrenceIndex = issueId
+        ? issueOccurrenceIndices.get(issueId) ?? 0
+        : 0;
       const context = issueContexts.get(issue);
       let success = false;
 
@@ -287,6 +331,18 @@ export function HighlightOverlay({
       }
 
       if (!success) {
+        const explicitRange = getExplicitIssueRange(resolvedText, issue);
+        if (explicitRange) {
+          success = applyTextRangeToElement(
+            targetElement,
+            explicitRange.start,
+            explicitRange.end,
+            issue.suggestion
+          );
+        }
+      }
+
+      if (!success && issue.original) {
         success = applyFixToElement(
           targetElement,
           issue.original,
@@ -314,6 +370,7 @@ export function HighlightOverlay({
     [
       targetElement,
       onIssueFixed,
+      resolvedText,
       issueOccurrenceIndices,
       issueIdByIssue,
       issueContexts,
@@ -328,11 +385,15 @@ export function HighlightOverlay({
     }
 
     if (!clipBounds) return activeSentenceRects;
-    return activeSentenceRects.filter((rect) => rectIntersectsBounds(rect, clipBounds));
+    return activeSentenceRects.filter((rect) =>
+      rectIntersectsBounds(rect, clipBounds)
+    );
   }, [activeSentenceRects, activeSentenceRange, clipBounds]);
 
   const activeIssue = popoverIssueId ? issueById.get(popoverIssueId) : null;
-  const activeContext = activeIssue ? issueContexts.get(activeIssue) : undefined;
+  const activeContext = activeIssue
+    ? issueContexts.get(activeIssue)
+    : undefined;
   const activeSentenceText = activeContext?.sentence.coreText;
   const activeCorrectedSentence =
     activeContext && activeSentenceText

@@ -97,6 +97,24 @@ export function resolveTextRangeNodes(
   startIndex: number,
   endIndex: number
 ): { startNode: Text; startOffset: number; endNode: Text; endOffset: number } | null {
+  if (startIndex === endIndex) {
+    for (const textNode of ranges) {
+      if (textNode.end >= startIndex) {
+        const offset = Math.min(
+          Math.max(startIndex - textNode.start, 0),
+          textNode.node.length
+        );
+        return {
+          startNode: textNode.node,
+          startOffset: offset,
+          endNode: textNode.node,
+          endOffset: offset,
+        };
+      }
+    }
+    return null;
+  }
+
   let startNode: Text | null = null;
   let startOffset = 0;
   let endNode: Text | null = null;
