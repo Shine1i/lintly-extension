@@ -1,7 +1,7 @@
 import type { SelectionRect } from "./types";
 import { getTextareaSelectionRect } from "./mirror";
 import { applyTextRangeToElement } from "./applyFix";
-import { shouldAvoidDirectDomFallback } from "./editorDetection";
+import { isWordWebEditor, shouldAvoidDirectDomFallback } from "./editorDetection";
 import { extractContentEditableText } from "./textNodes";
 
 export function getSelectionRect(activeElement?: Element | null): SelectionRect | null {
@@ -125,6 +125,10 @@ export function applySelectionSnapshot(
   }
 
   if (!snapshot.element.isConnected || !snapshot.element.isContentEditable) {
+    return false;
+  }
+  if (isWordWebEditor(snapshot.element)) {
+    console.log("[Typix] Skipping insert for Word Web to avoid corruption");
     return false;
   }
 

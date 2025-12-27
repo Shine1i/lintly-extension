@@ -4,7 +4,7 @@ import { useScrollSync } from "@/lib/hooks/useScrollSync";
 import { useInlineAnalysis } from "@/lib/hooks/useInlineAnalysis";
 import { HighlightOverlay, type IssueFixContext } from "./HighlightOverlay";
 import type { Issue } from "@/lib/types";
-import { getElementText } from "@/lib/textPositioning";
+import { getElementText, isWordWebEditor } from "@/lib/textPositioning";
 import { findSentenceRangeAt, getSentenceRanges } from "@/lib/sentences";
 
 function getHealthDotColor(issueCount: number): string {
@@ -35,6 +35,10 @@ export function InlineHighlightManager({
     debounceMs,
   });
   const { pagePosition } = useScrollSync(activeElement);
+  const isWordWeb = useMemo(
+    () => (activeElement ? isWordWebEditor(activeElement) : false),
+    [activeElement]
+  );
 
   const {
     state: analysisState,
@@ -76,7 +80,7 @@ export function InlineHighlightManager({
   }, [activeElement, clearResult]);
 
   useEffect(() => {
-    if (!isEnabled || !activeElement || isTyping) {
+    if (!isEnabled || !activeElement || isTyping || isWordWeb) {
       return;
     }
 
@@ -91,7 +95,7 @@ export function InlineHighlightManager({
     } else {
       clearResult();
     }
-  }, [isEnabled, activeElement, text, isTyping, minTextLength, analyze, clearResult]);
+  }, [isEnabled, activeElement, text, isTyping, minTextLength, analyze, clearResult, isWordWeb]);
 
   // Keep idle typing fast by removing fixed issues without full re-analysis.
   const handleIssueFixed = useCallback(
@@ -136,7 +140,7 @@ export function InlineHighlightManager({
     [dismissIssue, analysisState.lastAnalyzedText]
   );
 
-  if (!isEnabled || !activeElement) {
+  if (!isEnabled || !activeElement || isWordWeb) {
     return null;
   }
 

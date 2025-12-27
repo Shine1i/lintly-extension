@@ -8,6 +8,7 @@ import {
   captureSelectionSnapshot,
   getSelectionRect,
   getExplicitIssueRange,
+  isWordWebEditor,
   type SelectionRect,
   type SelectionSnapshot,
 } from "@/lib/textPositioning";
@@ -604,6 +605,13 @@ export default function App() {
     () => !state.isVisible && !state.toolbarPosition,
     [state.isVisible, state.toolbarPosition]
   );
+  const showInsertButton = useMemo(() => {
+    const snapshot = selectionSnapshotRef.current;
+    if (snapshot?.kind === "contentEditable") {
+      return !isWordWebEditor(snapshot.element);
+    }
+    return true;
+  }, [state.isVisible]);
 
   return (
     <>
@@ -631,6 +639,7 @@ export default function App() {
         onCustomSubmit={handleCustomSubmit}
         onInsert={handleInsert}
         onApplyAll={handleApplyAll}
+        showInsert={showInsertButton}
       />
     </>
   );

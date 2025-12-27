@@ -25,6 +25,7 @@ interface TypixModalProps {
   onCustomSubmit: (instruction: string) => void;
   onInsert: () => void;
   onApplyAll: () => void;
+  showInsert?: boolean;
 }
 
 export function TypixModal({
@@ -45,6 +46,7 @@ export function TypixModal({
   onCustomSubmit,
   onInsert,
   onApplyAll,
+  showInsert = true,
 }: TypixModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const [customInstruction, setCustomInstruction] = useState("");
@@ -180,14 +182,16 @@ export function TypixModal({
               <span className="font-semibold text-foreground">{issues.length}</span> {issues.length === 1 ? "issue" : "issues"} found
             </span>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-3 text-xs rounded-lg"
-                onClick={onInsert}
-              >
-                Insert
-              </Button>
+              {showInsert && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-3 text-xs rounded-lg"
+                  onClick={onInsert}
+                >
+                  Insert
+                </Button>
+              )}
               <Button
                 variant="default"
                 size="sm"

@@ -1,5 +1,5 @@
 import { findAllOccurrences } from "./occurrences";
-import { shouldAvoidDirectDomFallback } from "./editorDetection";
+import { isWordWebEditor, shouldAvoidDirectDomFallback } from "./editorDetection";
 import { extractContentEditableText, resolveTextRangeNodes } from "./textNodes";
 
 export function applyFixToElement(
@@ -34,6 +34,10 @@ export function applyFixToElement(
   }
 
   if (element.isContentEditable) {
+    if (isWordWebEditor(element)) {
+      console.log("[Typix] Skipping edit for Word Web to avoid corruption");
+      return false;
+    }
     const selection = window.getSelection();
     if (!selection) return false;
 
@@ -114,6 +118,10 @@ export function applyTextRangeToElement(
   }
 
   if (element.isContentEditable) {
+    if (isWordWebEditor(element)) {
+      console.log("[Typix] Skipping edit for Word Web to avoid corruption");
+      return false;
+    }
     // Use unified extraction to guarantee text and ranges are aligned
     const { text: fullText, ranges: textNodes } = extractContentEditableText(element);
     if (startIndex < 0 || startIndex > fullText.length) return false;
