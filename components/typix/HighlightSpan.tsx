@@ -15,6 +15,7 @@ interface HighlightSpanProps {
   onOpenChange: (open: boolean) => void;
   onApplyFix: () => void;
   onApplyWordFix?: () => void;
+  onDismiss?: () => void;
   sentenceText?: string;
   correctedSentence?: string;
   onPopoverHoverChange?: (isHovering: boolean) => void;
@@ -80,6 +81,7 @@ export function HighlightSpan({
   onOpenChange,
   onApplyFix,
   onApplyWordFix,
+  onDismiss,
   sentenceText,
   correctedSentence,
   onPopoverHoverChange,
@@ -98,6 +100,13 @@ export function HighlightSpan({
     onOpenChange(false);
     onPopoverHoverChange?.(false);
   }, [onApplyWordFix, onOpenChange, onPopoverHoverChange]);
+
+  const handleDismiss = useCallback(() => {
+    if (!onDismiss) return;
+    onDismiss();
+    onOpenChange(false);
+    onPopoverHoverChange?.(false);
+  }, [onDismiss, onOpenChange, onPopoverHoverChange]);
 
   if (!anchorRect) return null;
 
@@ -198,6 +207,21 @@ export function HighlightSpan({
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 {issue.explanation}
               </p>
+            )}
+
+            {onDismiss && (
+              <div className="pt-3 border-t border-border/50 flex justify-end">
+                <button
+                  type="button"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDismiss();
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
             )}
           </div>
         </PopoverContent>

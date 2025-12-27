@@ -41,6 +41,7 @@ export function InlineHighlightManager({
     analyze,
     clearResult,
     removeIssue,
+    dismissIssue,
     rebaseIssues,
     reanalyzeSentence,
   } = useInlineAnalysis({ minTextLength });
@@ -128,6 +129,13 @@ export function InlineHighlightManager({
     [activeElement, analysisState.lastAnalyzedText, removeIssue, rebaseIssues, reanalyzeSentence]
   );
 
+  const handleIssueDismissed = useCallback(
+    (issue: Issue) => {
+      dismissIssue(issue, analysisState.lastAnalyzedText);
+    },
+    [dismissIssue, analysisState.lastAnalyzedText]
+  );
+
   if (!isEnabled || !activeElement) {
     return null;
   }
@@ -171,6 +179,7 @@ export function InlineHighlightManager({
           elementText={text}
           issues={analysisState.issues}
           onIssueFixed={handleIssueFixed}
+          onIssueDismissed={handleIssueDismissed}
           isTyping={isTyping}
           charDelta={charDelta}
           changePosition={changePosition}

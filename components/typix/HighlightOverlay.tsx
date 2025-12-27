@@ -55,6 +55,7 @@ interface HighlightOverlayProps {
   elementText?: string;
   issues: Issue[];
   onIssueFixed?: (context: IssueFixContext) => void;
+  onIssueDismissed?: (issue: Issue) => void;
   /** Keep highlights responsive while typing without reflow-heavy recomputes. */
   isTyping?: boolean;
   /** Used to approximate visual shifts instead of re-measuring on each keypress. */
@@ -68,6 +69,7 @@ export function HighlightOverlay({
   elementText,
   issues,
   onIssueFixed,
+  onIssueDismissed,
   isTyping = false,
   charDelta = 0,
   changePosition = 0,
@@ -378,6 +380,21 @@ export function HighlightOverlay({
     ]
   );
 
+  const handleDismissIssue = useCallback(
+    (issue: Issue) => {
+      const issueId = issueIdByIssue.get(issue);
+      if (issueId) {
+        removeIssueRects([issueId]);
+      }
+
+      setActiveSentenceRange(null);
+      setActiveSentenceRects([]);
+
+      onIssueDismissed?.(issue);
+    },
+    [issueIdByIssue, onIssueDismissed, removeIssueRects]
+  );
+
   // Filter sentence rects to only those in the visible content area
   const renderedSentenceRects = useMemo(() => {
     if (!activeSentenceRange || activeSentenceRects.length === 0) {
@@ -534,6 +551,9 @@ export function HighlightOverlay({
           onOpenChange={handlePopoverOpenChange}
           onApplyFix={() => handleApplyFix(activeIssue)}
           onApplyWordFix={() => handleApplyWordFix(activeIssue)}
+          onDismiss={
+            onIssueDismissed ? () => handleDismissIssue(activeIssue) : undefined
+          }
           sentenceText={activeSentenceText}
           correctedSentence={activeCorrectedSentence}
           onPopoverHoverChange={handlePopoverHoverChange}
