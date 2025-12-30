@@ -2,6 +2,7 @@ export interface SlashCommand {
   name: string;
   description: string;
   prompt: string;
+  icon?: string;
 }
 
 export interface CommandGroup {
@@ -17,25 +18,28 @@ export const commandGroups: CommandGroup[] = [
         name: "formal",
         description: "Rewrite in formal tone",
         prompt:
-          "Rewrite the following text in a formal tone while preserving all meaning. Output only the rewritten text. $ARGUMENT",
+          "Rewrite the input text to make it more professional and formal while retaining its essential content",
+        icon: "/imgs/formal.png",
       },
       {
         name: "casual",
         description: "Rewrite in casual tone",
         prompt:
-          "Rewrite the following text in a casual, conversational tone while preserving all meaning. Output only the rewritten text. $ARGUMENT",
-      },
-      {
-        name: "professional",
-        description: "Rewrite in professional tone",
-        prompt:
-          "Rewrite the following text in a professional tone suitable for business communication while preserving all meaning. Output only the rewritten text. $ARGUMENT",
+          "Rewrite the input text to make it more casual and conversational while maintaining its main points",
+        icon: "/imgs/casual.png",
       },
       {
         name: "academic",
         description: "Rewrite in academic tone",
         prompt:
-          "Rewrite the following text in an academic tone suitable for scholarly writing while preserving all meaning. Output only the rewritten text. $ARGUMENT",
+          "Rewrite the input text to make it more academic and scholarly while retaining its essential content",
+      },
+      {
+        name: "friendly",
+        description: "Rewrite in friendly tone",
+        prompt:
+          "Rewrite the input text to make it more friendly and approachable while maintaining its main points",
+        icon: "/imgs/friendly.png",
       },
     ],
   },
@@ -46,25 +50,25 @@ export const commandGroups: CommandGroup[] = [
         name: "summary",
         description: "Summarize in up to 3 sentences",
         prompt:
-          "Provide a concise, objective summary of the input text in up to three sentences, focusing on key actions and intentions without using second or third person pronouns. Output only the summary. $ARGUMENT",
+          "Summarize this text concisely in up to three sentences",
       },
       {
         name: "expand",
         description: "Elaborate and add more detail",
         prompt:
-          "Expand and elaborate on the following text, adding more detail and depth while maintaining the original meaning and intent. Output only the expanded text. $ARGUMENT",
+          "Expand and elaborate on the input text, adding more detail and depth while maintaining the original meaning",
       },
       {
         name: "shorten",
         description: "Make more concise",
         prompt:
-          "Condense the following text to be more concise while preserving the key meaning and important details. Output only the shortened text. $ARGUMENT",
+          "Rewrite the input text to make it more concise while preserving its core meaning",
       },
       {
         name: "improve",
         description: "Improve clarity and flow",
         prompt:
-          "Improve the clarity, flow, and readability of the following text while preserving its meaning. Output only the improved text. $ARGUMENT",
+          "Improve the clarity, flow, and readability of the input text while preserving its meaning",
       },
     ],
   },
@@ -101,7 +105,10 @@ export function parseSlashCommand(input: string): {
   return { command, args };
 }
 
-// Build the final prompt by replacing $ARGUMENT placeholder
+// Build the final prompt, appending args if provided
 export function buildPrompt(command: SlashCommand, args: string): string {
-  return command.prompt.replace("$ARGUMENT", args).trim();
+  if (args.trim()) {
+    return `${command.prompt}. ${args.trim()}`;
+  }
+  return command.prompt;
 }

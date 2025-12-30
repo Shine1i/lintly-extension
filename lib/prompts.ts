@@ -9,16 +9,13 @@ export const USER_PROMPT_PREFIXES = {
   SUMMARIZE_SUFFIX: "\n</Text>",
   PARAPHRASE: "Paraphrase this text while preserving the meaning:\n<Text>\n",
   PARAPHRASE_SUFFIX: "\n</Text>",
-  CUSTOM: "Follow the instruction and return only the rewritten text:\n<Text>\n",
-  CUSTOM_SUFFIX: "\n</Text>",
 };
 
 export const TONE_PROMPT_PREFIX: Record<Tone, string> = {
-  formal: "Rewrite the text in a formal tone while preserving all meaning:\n<Text>\n",
-  casual: "Rewrite the text in a casual tone while preserving all meaning:\n<Text>\n",
-  professional: "Rewrite the text in a professional tone while preserving all meaning:\n<Text>\n",
-  friendly: "Rewrite the text in a friendly tone while preserving all meaning:\n<Text>\n",
-  academic: "Rewrite the text in an academic tone while preserving all meaning:\n<Text>\n",
+  formal: "Rewrite the input text to make it more professional and formal while retaining its essential content:\n<Text>\n",
+  casual: "Rewrite the input text to make it more casual and conversational while maintaining its main points:\n<Text>\n",
+  friendly: "Rewrite the input text to make it more friendly and approachable while maintaining its main points:\n<Text>\n",
+  academic: "Rewrite the input text to make it more academic and scholarly while retaining its essential content:\n<Text>\n",
 };
 
 export const TONE_PROMPT_SUFFIX = "\n</Text>";

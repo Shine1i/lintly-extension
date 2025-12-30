@@ -16,7 +16,7 @@ interface SelectionToolbarProps {
 const TONES: { value: Tone; label: string }[] = [
   { value: "formal", label: "Formal" },
   { value: "casual", label: "Casual" },
-  { value: "professional", label: "Professional" },
+  { value: "friendly", label: "Friendly" },
   { value: "academic", label: "Academic" },
 ];
 

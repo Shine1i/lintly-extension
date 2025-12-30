@@ -37,7 +37,7 @@ export const initialAppState: AppState = {
   isLoading: false,
   sourceText: "",
   originalSourceText: "",
-  tone: "professional",
+  tone: "formal",
   action: "ANALYZE",
   result: null,
   originalResult: null,

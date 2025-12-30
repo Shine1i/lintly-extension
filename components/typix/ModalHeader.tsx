@@ -19,7 +19,6 @@ interface ModalHeaderProps {
 }
 
 const TONES: { value: Tone; label: string }[] = [
-  { value: "professional", label: "Professional" },
   { value: "formal", label: "Formal" },
   { value: "casual", label: "Casual" },
   { value: "friendly", label: "Friendly" },

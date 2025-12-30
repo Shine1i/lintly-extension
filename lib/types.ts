@@ -1,5 +1,5 @@
 export type Action = "ANALYZE" | "SUMMARIZE" | "PARAPHRASE" | "TONE_REWRITE" | "CUSTOM";
-export type Tone = "formal" | "casual" | "professional" | "friendly" | "academic";
+export type Tone = "formal" | "casual" | "friendly" | "academic";
 export type Severity = "error" | "warning" | "suggestion";
 export type IssueType = "grammar" | "spelling" | "punctuation" | "clarity" | "word_choice";
 

@@ -157,16 +157,25 @@ export const CommandMenu = forwardRef<CommandMenuHandle, CommandMenuProps>(
                       aria-selected={isActive}
                       onClick={() => handleItemClick(command)}
                       onMouseEnter={() => onActiveIndexChange(currentIndex)}
-                      className={`flex flex-col min-w-0 px-2 py-1.5 rounded-sm cursor-pointer text-sm ${
+                      className={`flex items-center gap-2 min-w-0 px-2 py-1.5 rounded-sm cursor-pointer text-sm ${
                         isActive
                           ? "bg-accent text-accent-foreground"
                           : "text-foreground hover:bg-accent/50"
                       }`}
                     >
-                      <span className="font-medium">/{command.name}</span>
-                      <span className="text-xs text-muted-foreground truncate">
-                        {command.description}
-                      </span>
+                      {command.icon && (
+                        <img
+                          src={browser.runtime.getURL(command.icon)}
+                          alt=""
+                          className="w-14 h-14 shrink-0 object-cover scale-150"
+                        />
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium">/{command.name}</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {command.description}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}

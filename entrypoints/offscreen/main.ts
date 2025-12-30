@@ -13,9 +13,30 @@ import {
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODEL = "/app/models/Typix-1.5re5-epo-GPTQ";
-// const API_URL = "https://openai.studyon.app/api/chat/completions";
-// const MODEL = "google/gemini-2.5-flash-lite";
+const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
+const FALLBACK_MODEL = "/app/models/Typix-1.5re5-epo-GPTQ";
+
+let cachedModelName: string | null = null;
+
+async function fetchModelName(): Promise<string> {
+  if (cachedModelName) return cachedModelName;
+
+  try {
+    const res = await fetch(MODELS_URL);
+    if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
+    const data = await res.json();
+    if (data?.data?.[0]?.id) {
+      cachedModelName = data.data[0].id;
+      console.log("[Typix API] Using model:", cachedModelName);
+      return cachedModelName;
+    }
+  } catch (e) {
+    console.error("[Typix API] Failed to fetch model name:", e);
+  }
+
+  cachedModelName = FALLBACK_MODEL;
+  return cachedModelName;
+}
 
 type UrlToken = { placeholder: string; url: string };
 
@@ -142,11 +163,13 @@ async function callAPI(
     userText.substring(0, 100) + "..."
   );
 
+  const model = await fetchModelName();
+
   const res = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userText },
@@ -184,8 +207,8 @@ function getUserMessage(
       return `${TONE_PROMPT_PREFIX[tone]}${text}${TONE_PROMPT_SUFFIX}`;
     }
     case "CUSTOM": {
-      const instruction = options?.customInstruction || "";
-      return `${USER_PROMPT_PREFIXES.CUSTOM}${instruction}\n${text}${USER_PROMPT_PREFIXES.CUSTOM_SUFFIX}`;
+      const instruction = options?.customInstruction || "Rewrite the text";
+      return `${instruction}:\n<Text>\n${text}\n</Text>`;
     }
     default:
       return `${USER_PROMPT_PREFIXES.ANALYZE}${text}${USER_PROMPT_PREFIXES.ANALYZE_SUFFIX}`;
