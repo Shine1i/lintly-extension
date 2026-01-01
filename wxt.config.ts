@@ -20,7 +20,7 @@ export default defineConfig({
       },
     ],
     permissions: ["offscreen", "activeTab", "storage"],
-    host_permissions: ["<all_urls>", "https://vllm.kernelvm.xyz/*"],
+    host_permissions: ["<all_urls>", "http://192.168.0.147:8003/*", "https://typix.app/*"],
   },
   modules: ["@wxt-dev/module-react"],
   vite: () => ({

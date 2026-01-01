@@ -39,6 +39,15 @@ async function sendToOffscreen(msg: OffscreenMessage) {
 }
 
 export default defineBackground(() => {
+  // Open onboarding on first install
+  browser.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === "install") {
+      await browser.tabs.create({
+        url: "https://typix.app/onboarding",
+      });
+    }
+  });
+
   browser.runtime.onMessage.addListener((msg: ProcessRequest, _, respond) => {
     if (msg.type === "PROCESS_TEXT") {
       const offscreenMsg: OffscreenMessage = {

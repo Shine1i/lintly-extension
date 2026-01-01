@@ -12,8 +12,8 @@ import {
 } from "@/lib/prompts";
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
-const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
+const API_URL = "http://192.168.0.147:8003/v1/chat/completions";
+const MODELS_URL = "http://192.168.0.147:8003/v1/models";
 const FALLBACK_MODEL = "/app/models/Typix-1.5re5-epo-GPTQ";
 
 let cachedModelName: string | null = null;

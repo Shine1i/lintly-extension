@@ -1,5 +1,16 @@
 {
   "permissions": {
-    "allow": ["Bash(cat:*)"]
+    "allow": [
+      "Bash(cat:*)",
+      "WebSearch",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: consolidate tones and add command icons\n\n- Remove professional tone, merge with formal \\(4 tones: formal, casual, friendly, academic\\)\n- Update prompts to new format with <Text> wrapper\n- Add cat mascot icons for formal, casual, friendly commands\n- Update /shorten command to use concise prompt\n- Add imgs to web_accessible_resources\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "WebFetch(domain:www.better-auth.com)",
+      "Bash(git pull:*)",
+      "Bash(mkdir:*)",
+      "Bash(bun run typecheck:*)",
+      "WebFetch(domain:tanstack.com)"
+    ]
   }
 }
