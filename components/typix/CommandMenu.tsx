@@ -7,6 +7,7 @@ import {
   forwardRef,
 } from "react";
 import { commandGroups, type SlashCommand } from "@/lib/commands";
+import type { PublicPath } from "wxt/browser";
 
 interface CommandMenuProps {
   open: boolean;
@@ -165,7 +166,7 @@ export const CommandMenu = forwardRef<CommandMenuHandle, CommandMenuProps>(
                     >
                       {command.icon && (
                         <img
-                          src={browser.runtime.getURL(command.icon)}
+                          src={browser.runtime.getURL(command.icon as PublicPath)}
                           alt=""
                           className="w-14 h-14 shrink-0 object-cover scale-150"
                         />

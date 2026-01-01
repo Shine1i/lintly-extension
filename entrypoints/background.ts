@@ -1,49 +1,31 @@
 import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
 import { ExtensionQueryClient } from "@/lib/cache";
 
-const TYPIX_API_URL = "https://typix.app";
-
 const queryClient = new ExtensionQueryClient({
   defaultStaleTime: Infinity, // ML outputs are deterministic
 });
 
-// Token management
+// Token management - received from content script on typix.app
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-async function getToken(): Promise<string | null> {
-  // Return cached token if still valid (with 5 min buffer)
+function setToken(token: string) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    cachedToken = {
+      token,
+      expiresAt: (payload.exp || 0) * 1000,
+    };
+    console.log("[Typix] Token stored from content script");
+  } catch (e) {
+    console.error("[Typix] Invalid token format:", e);
+  }
+}
+
+function getToken(): string | null {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 5 * 60 * 1000) {
     return cachedToken.token;
   }
-
-  try {
-    const response = await fetch(`${TYPIX_API_URL}/api/auth/token`, {
-      method: "GET",
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      console.log("[Typix] Token fetch failed:", response.status);
-      cachedToken = null;
-      return null;
-    }
-
-    const data = await response.json();
-    if (data.token) {
-      // JWT expiration is typically in the token, parse it
-      const payload = JSON.parse(atob(data.token.split(".")[1]));
-      cachedToken = {
-        token: data.token,
-        expiresAt: (payload.exp || 0) * 1000,
-      };
-      console.log("[Typix] Token fetched successfully");
-      return data.token;
-    }
-  } catch (e) {
-    console.error("[Typix] Token fetch error:", e);
-  }
-
-  cachedToken = null;
+  console.log("[Typix] No valid token - user needs to login at typix.app");
   return null;
 }
 
@@ -90,29 +72,35 @@ export default defineBackground(() => {
     }
   });
 
-  browser.runtime.onMessage.addListener((msg: ProcessRequest, _, respond) => {
-    if (msg.type === "PROCESS_TEXT") {
-      // Get token first, then send to offscreen
-      getToken().then((token) => {
-        const offscreenMsg: OffscreenMessage = {
-          target: "offscreen",
-          type: "GENERATE",
-          action: msg.action,
-          text: msg.text,
-          token: token || undefined,
-          options: msg.options,
-        };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  browser.runtime.onMessage.addListener((msg: any, _, respond) => {
+    // Handle token from content script on typix.app
+    if (msg.type === "SET_TOKEN" && msg.token) {
+      setToken(msg.token);
+      respond({ success: true });
+      return true;
+    }
 
-        return queryClient.fetch({
-          queryKey: [
-            "model",
-            msg.action,
-            msg.text,
-            msg.options?.tone,
-            msg.options?.customInstruction,
-          ],
-          queryFn: () => sendToOffscreen(offscreenMsg),
-        });
+    if (msg.type === "PROCESS_TEXT") {
+      const token = getToken();
+      const offscreenMsg: OffscreenMessage = {
+        target: "offscreen",
+        type: "GENERATE",
+        action: msg.action,
+        text: msg.text,
+        token: token || undefined,
+        options: msg.options,
+      };
+
+      queryClient.fetch({
+        queryKey: [
+          "model",
+          msg.action,
+          msg.text,
+          msg.options?.tone,
+          msg.options?.customInstruction,
+        ],
+        queryFn: () => sendToOffscreen(offscreenMsg),
       })
         .then(respond)
         .catch((e) => respond({ success: false, error: String(e) }));

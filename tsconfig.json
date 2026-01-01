@@ -8,5 +8,6 @@
       "@/*": ["./*"]
     },
     "types": ["@types/bun"]
-  }
+  },
+  "exclude": ["typix-web", "typix-benchmark"]
 }
