@@ -142,7 +142,10 @@ export default defineBackground(() => {
         ],
         queryFn: () => sendToOffscreen(offscreenMsg),
       })
-        .then(respond)
+        .then((result) => {
+          console.log("[background] Sending to content, requestId:", result?.requestId);
+          respond(result);
+        })
         .catch((e) => respond({ success: false, error: String(e) }));
       return true;
     }
