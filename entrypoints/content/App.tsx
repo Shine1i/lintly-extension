@@ -280,9 +280,13 @@ export default function App() {
           issues: clearedIssues,
         },
       });
+
+      // Track that user accepted a fix
+      submitFeedback(state.requestId, true, state.result.issues.length);
+
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
-    [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
+    [dispatch, state.result, state.sourceText, state.requestId, reanalyzeSentenceRange]
   );
 
   const handleApplyWordFix = useCallback(
@@ -367,9 +371,12 @@ export default function App() {
         },
       });
 
+      // Track that user accepted a fix
+      submitFeedback(state.requestId, true, state.result.issues.length);
+
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
-    [dispatch, state.result, state.sourceText, reanalyzeSentenceRange]
+    [dispatch, state.result, state.sourceText, state.requestId, reanalyzeSentenceRange]
   );
 
   const handleCustomSubmit = useCallback(
