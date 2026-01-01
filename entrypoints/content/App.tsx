@@ -117,6 +117,7 @@ export default function App() {
       const currentId = ++processIdRef.current;
 
       try {
+        console.log("[App] Sending PROCESS_TEXT request...");
         const response: ProcessResponse = await browser.runtime.sendMessage({
           type: "PROCESS_TEXT",
           action: customInstruction ? "CUSTOM" : actionToUse,
@@ -126,18 +127,21 @@ export default function App() {
             customInstruction: customInstruction || undefined,
           },
         });
+        console.log("[App] Got response:", response?.success, "requestId:", response?.requestId);
 
         if (currentId !== processIdRef.current) {
+          console.log("[App] Request outdated, ignoring");
           return;
         }
 
         if (response.success && response.result) {
-          console.log("[App] Received response with requestId:", response.requestId);
+          console.log("[App] Setting result with requestId:", response.requestId);
           dispatch({ type: "SET_RESULT", result: response.result, requestId: response.requestId });
         } else {
           dispatch({ type: "SET_ERROR", error: response.error || "Unknown error" });
         }
       } catch (err) {
+        console.error("[App] Error in processText:", err);
         if (currentId !== processIdRef.current) {
           return;
         }
