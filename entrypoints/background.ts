@@ -51,6 +51,7 @@ async function sendToOffscreen(msg: OffscreenMessage) {
   for (let i = 0; i < 3; i++) {
     try {
       const response = await browser.runtime.sendMessage(msg);
+      console.log("[background] Received from offscreen, requestId:", response?.requestId);
       if (response && !response.success) {
         throw new Error(response.error || "Unknown offscreen error");
       }

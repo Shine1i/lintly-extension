@@ -132,6 +132,7 @@ export default function App() {
         }
 
         if (response.success && response.result) {
+          console.log("[App] Received response with requestId:", response.requestId);
           dispatch({ type: "SET_RESULT", result: response.result, requestId: response.requestId });
         } else {
           dispatch({ type: "SET_ERROR", error: response.error || "Unknown error" });

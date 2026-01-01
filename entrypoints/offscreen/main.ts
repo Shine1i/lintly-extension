@@ -363,9 +363,10 @@ browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
   currentAction = msg.action;
 
   processText(msg.action, msg.text, msg.options)
-    .then(({ result, requestId }) =>
-      respond({ success: true, result, requestId })
-    )
+    .then(({ result, requestId }) => {
+      console.log("[offscreen] Responding with requestId:", requestId);
+      respond({ success: true, result, requestId });
+    })
     .catch((e: Error) => respond({ success: false, error: e.message }));
 
   return true;
