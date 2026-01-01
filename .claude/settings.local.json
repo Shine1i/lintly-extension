@@ -10,7 +10,19 @@
       "Bash(git pull:*)",
       "Bash(mkdir:*)",
       "Bash(bun run typecheck:*)",
-      "WebFetch(domain:tanstack.com)"
+      "WebFetch(domain:tanstack.com)",
+      "Bash(bun pm:*)",
+      "Bash(uv init:*)",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(bunx @better-auth/cli migrate:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: update Dockerfile for cross-platform builds and add JWT plugin\n\n- Use npm install instead of npm ci to handle platform-specific deps\n- Add Better Auth JWT plugin for extension API authentication\n- Add jwtClient plugin and getToken export in auth-client\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(bunx @better-auth/cli generate:*)",
+      "Bash(git commit:*)",
+      "Bash(bun drizzle-kit:*)"
     ]
   }
 }

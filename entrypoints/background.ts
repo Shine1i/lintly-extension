@@ -43,7 +43,7 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === "install") {
       await browser.tabs.create({
-        url: "https://typix.app/onboarding",
+        url: "http://localhost:3000/signup",
       });
     }
   });

@@ -12,9 +12,52 @@ import {
 } from "@/lib/prompts";
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
 
-const API_URL = "http://192.168.0.147:8003/v1/chat/completions";
-const MODELS_URL = "http://192.168.0.147:8003/v1/models";
-const FALLBACK_MODEL = "/app/models/Typix-1.5re5-epo-GPTQ";
+const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
+const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
+const FALLBACK_MODEL = "typix-medium-epo";
+
+// Concurrency limiter to prevent overwhelming the server
+class ConcurrencyLimiter {
+  private queue: Array<{
+    fn: () => Promise<unknown>;
+    resolve: (value: unknown) => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  private running = 0;
+
+  constructor(private maxConcurrent = 5) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({
+        fn: fn as () => Promise<unknown>,
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue() {
+    if (this.running >= this.maxConcurrent || this.queue.length === 0) return;
+
+    const item = this.queue.shift();
+    if (!item) return;
+
+    this.running++;
+    try {
+      const result = await item.fn();
+      item.resolve(result);
+    } catch (e) {
+      item.reject(e);
+    } finally {
+      this.running--;
+      this.processQueue();
+    }
+  }
+}
+
+const apiLimiter = new ConcurrencyLimiter(5);
 
 let cachedModelName: string | null = null;
 
@@ -154,9 +197,12 @@ function splitIntoSentences(
   return parts;
 }
 
+type Priority = "realtime" | "bulk";
+
 async function callAPI(
   systemPrompt: string,
-  userText: string
+  userText: string,
+  priority: Priority = "realtime"
 ): Promise<string> {
   console.log(
     "[Typix API] Calling API with text:",
@@ -167,7 +213,10 @@ async function callAPI(
 
   const res = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Priority": priority,
+    },
     body: JSON.stringify({
       model,
       messages: [
@@ -175,7 +224,6 @@ async function callAPI(
         { role: "user", content: userText },
       ],
       temperature: 0.2,
-      // temperature: 0.3,
       min_p: 0.15,
       repetition_penalty: 1.05,
     }),
@@ -219,43 +267,57 @@ async function processSentencesInParallel(text: string): Promise<string> {
   const parts = splitIntoSentences(text);
   console.log("[Typix API] Split into", parts.length, "parts");
 
-  // Process all sentences in parallel
+  // Count sentences that will actually need API calls
+  const contentParts = parts.filter(
+    ({ sentence, isContent }) =>
+      isContent && shouldAnalyzeSentence(maskUrls(sentence.trim()).maskedText)
+  );
+
+  // Bulk = more than 3 sentences needing processing
+  const priority: Priority = contentParts.length > 3 ? "bulk" : "realtime";
+  console.log(
+    `[Typix API] Priority: ${priority} (${contentParts.length} sentences to process)`
+  );
+
+  // Process sentences with concurrency limit (max 5 parallel requests)
   const results = await Promise.all(
-    parts.map(async ({ sentence, isContent }, index) => {
-      // Skip non-content (whitespace only)
-      if (!isContent) {
-        return sentence;
-      }
+    parts.map(({ sentence, isContent }, index) =>
+      apiLimiter.run(async () => {
+        // Skip non-content (whitespace only)
+        if (!isContent) {
+          return sentence;
+        }
 
-      const trimmedSentence = sentence.trim();
-      const { maskedText, tokens } = maskUrls(trimmedSentence);
-      if (!shouldAnalyzeSentence(maskedText)) {
-        return sentence;
-      }
+        const trimmedSentence = sentence.trim();
+        const { maskedText, tokens } = maskUrls(trimmedSentence);
+        if (!shouldAnalyzeSentence(maskedText)) {
+          return sentence;
+        }
 
-      // Call API
-      console.log(
-        `[Typix API] Processing sentence ${index + 1}:`,
-        trimmedSentence.substring(0, 30) + "..."
-      );
-      const userMessage = getUserMessage("ANALYZE", maskedText);
-      const corrected = await callAPI(SYSTEM_PROMPT, userMessage);
-      const trimmedCorrected = corrected.trim();
-      if (
-        tokens.length > 0 &&
-        tokens.some(
-          ({ placeholder }) => !trimmedCorrected.includes(placeholder)
-        )
-      ) {
-        return sentence;
-      }
-      const restoredCorrected = restoreUrls(trimmedCorrected, tokens);
+        // Call API with priority
+        console.log(
+          `[Typix API] Processing sentence ${index + 1}:`,
+          trimmedSentence.substring(0, 30) + "..."
+        );
+        const userMessage = getUserMessage("ANALYZE", maskedText);
+        const corrected = await callAPI(SYSTEM_PROMPT, userMessage, priority);
+        const trimmedCorrected = corrected.trim();
+        if (
+          tokens.length > 0 &&
+          tokens.some(
+            ({ placeholder }) => !trimmedCorrected.includes(placeholder)
+          )
+        ) {
+          return sentence;
+        }
+        const restoredCorrected = restoreUrls(trimmedCorrected, tokens);
 
-      // Preserve original whitespace around the sentence
-      const leadingWs = sentence.match(/^\s*/)?.[0] || "";
-      const trailingWs = sentence.match(/\s*$/)?.[0] || "";
-      return leadingWs + restoredCorrected + trailingWs;
-    })
+        // Preserve original whitespace around the sentence
+        const leadingWs = sentence.match(/^\s*/)?.[0] || "";
+        const trailingWs = sentence.match(/\s*$/)?.[0] || "";
+        return leadingWs + restoredCorrected + trailingWs;
+      })
+    )
   );
 
   return results.join("");
