@@ -3,9 +3,20 @@ import { useInputObserver } from "@/lib/hooks/useInputObserver";
 import { useScrollSync } from "@/lib/hooks/useScrollSync";
 import { useInlineAnalysis } from "@/lib/hooks/useInlineAnalysis";
 import { HighlightOverlay, type IssueFixContext } from "./HighlightOverlay";
-import type { Issue } from "@/lib/types";
+import type { Issue, FeedbackMessage } from "@/lib/types";
 import { getElementText, isWordWebEditor } from "@/lib/textPositioning";
 import { findSentenceRangeAt, getSentenceRanges } from "@/lib/sentences";
+
+function submitFeedback(requestId: string | null, accepted: boolean, issueCount?: number) {
+  if (!requestId) return;
+  const msg: FeedbackMessage = {
+    type: "SUBMIT_FEEDBACK",
+    requestId,
+    accepted,
+    issueCount,
+  };
+  browser.runtime.sendMessage(msg).catch(() => {});
+}
 
 function getHealthDotColor(issueCount: number): string {
   if (issueCount === 0) return "bg-emerald-500";
@@ -101,6 +112,10 @@ export function InlineHighlightManager({
   const handleIssueFixed = useCallback(
     async ({ issue, sentenceAnchor, sentenceIssues }: IssueFixContext) => {
       console.log("[Typix] Fix applied:", issue.original, "→", issue.suggestion);
+
+      // Send feedback to API
+      submitFeedback(analysisState.requestId, true, analysisState.issues.length);
+
       const previousText = analysisState.lastAnalyzedText;
       const issuesToRemove =
         sentenceIssues && sentenceIssues.length > 0 ? sentenceIssues : [issue];
@@ -130,7 +145,7 @@ export function InlineHighlightManager({
         skipIssueClear: Boolean(sentenceIssues && sentenceIssues.length > 0),
       });
     },
-    [activeElement, analysisState.lastAnalyzedText, removeIssue, rebaseIssues, reanalyzeSentence]
+    [activeElement, analysisState.lastAnalyzedText, analysisState.requestId, analysisState.issues.length, removeIssue, rebaseIssues, reanalyzeSentence]
   );
 
   const handleIssueDismissed = useCallback(

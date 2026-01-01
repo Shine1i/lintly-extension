@@ -357,7 +357,7 @@ async function processText(
 }
 
 browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
-  if (msg.target !== "offscreen" || msg.type !== "GENERATE") return;
+  if (msg.target !== "offscreen" || msg.type !== "GENERATE") return false; // Don't handle non-offscreen messages
 
   currentToken = msg.token;
   currentAction = msg.action;

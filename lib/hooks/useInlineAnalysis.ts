@@ -64,6 +64,7 @@ export interface InlineAnalysisState {
   issues: Issue[];
   error: string | null;
   lastAnalyzedText: string;
+  requestId: string | null;
 }
 
 interface UseInlineAnalysisOptions {
@@ -102,6 +103,7 @@ export function useInlineAnalysis(
     issues: [],
     error: null,
     lastAnalyzedText: "",
+    requestId: null,
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -186,6 +188,7 @@ export function useInlineAnalysis(
           issues: filteredIssues,
           error: null,
           lastAnalyzedText: text,
+          requestId: response.requestId || null,
         });
       } else {
         setState((prev) => ({
@@ -193,6 +196,7 @@ export function useInlineAnalysis(
           isAnalyzing: false,
           error: response.error || "Analysis failed",
           lastAnalyzedText: text,
+          requestId: null,
         }));
       }
     } catch (err) {
@@ -227,6 +231,7 @@ export function useInlineAnalysis(
       issues: [],
       error: null,
       lastAnalyzedText: "",
+      requestId: null,
     });
   }, []);
 
@@ -354,6 +359,7 @@ export function useInlineAnalysis(
             ),
             error: null,
             lastAnalyzedText: fullText,
+            requestId: response.requestId || prev.requestId,
           }));
         } else {
           setState((prev) => ({
