@@ -12,7 +12,7 @@ import {
   type SelectionRect,
   type SelectionSnapshot,
 } from "@/lib/textPositioning";
-import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone } from "@/lib/types";
+import type { Action, AnalyzeResult, Issue, ProcessResponse, Tone, FeedbackMessage } from "@/lib/types";
 import { appStateAtom } from "@/lib/state/typixAppState";
 import {
   applyIssuesToSentence,
@@ -24,6 +24,23 @@ import {
 } from "@/lib/sentences";
 import { mergeIssuesForSentence } from "@/lib/issueMerge";
 import { trackEvent } from "@/lib/analytics";
+
+function submitFeedback(
+  requestId: string | null,
+  accepted: boolean,
+  issueCount?: number,
+  userEdit?: string
+) {
+  if (!requestId) return;
+  const msg: FeedbackMessage = {
+    type: "SUBMIT_FEEDBACK",
+    requestId,
+    accepted,
+    userEdit,
+    issueCount,
+  };
+  browser.runtime.sendMessage(msg).catch(() => {});
+}
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {
   const modalWidth = 560;
@@ -109,7 +126,7 @@ export default function App() {
         }
 
         if (response.success && response.result) {
-          dispatch({ type: "SET_RESULT", result: response.result });
+          dispatch({ type: "SET_RESULT", result: response.result, requestId: response.requestId });
         } else {
           dispatch({ type: "SET_ERROR", error: response.error || "Unknown error" });
         }
@@ -375,12 +392,16 @@ export default function App() {
     const applied =
       applySelectionSnapshot(storedSnapshot, text) ||
       applySelectionSnapshot(captureSelectionSnapshot(activeElement), text);
-    if (!applied) {
-      // Insert failed - no valid selection target
+    if (applied) {
+      const issueCount =
+        state.result && typeof state.result === "object"
+          ? state.result.issues.length
+          : undefined;
+      submitFeedback(state.requestId, true, issueCount);
     }
     selectionSnapshotRef.current = null;
     dispatch({ type: "HIDE_MODAL" });
-  }, [dispatch, state.result, state.sourceText]);
+  }, [dispatch, state.result, state.sourceText, state.requestId]);
 
   const handleApplyAll = useCallback(() => {
     if (!state.result || typeof state.result !== "object" || state.result.issues.length === 0) {
@@ -426,7 +447,9 @@ export default function App() {
       appliedCount,
       skippedCount,
     });
-  }, [dispatch, state.result, state.sourceText]);
+
+    submitFeedback(state.requestId, true, issues.length);
+  }, [dispatch, state.result, state.sourceText, state.requestId]);
 
   const handleToolbarAction = useCallback((action: Action, tone?: Tone) => {
     const activeElement = document.activeElement;

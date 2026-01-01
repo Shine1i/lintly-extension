@@ -17,13 +17,14 @@ export interface AppState {
   modalPosition: { x: number; y: number };
   selectionRect: SelectionRect | null;
   error: string | null;
+  requestId: string | null;
 }
 
 export type AppAction =
   | { type: "SHOW_MODAL"; text: string; position: { x: number; y: number }; autoRun?: boolean; action?: Action; tone?: Tone }
   | { type: "HIDE_MODAL" }
   | { type: "SET_LOADING"; loading: boolean }
-  | { type: "SET_RESULT"; result: AppResult }
+  | { type: "SET_RESULT"; result: AppResult; requestId?: string }
   | { type: "SET_ERROR"; error: string | null }
   | { type: "SET_SOURCE_TEXT"; text: string }
   | { type: "SET_TONE"; tone: Tone }
@@ -45,6 +46,7 @@ export const initialAppState: AppState = {
   modalPosition: { x: 100, y: 100 },
   selectionRect: null,
   error: null,
+  requestId: null,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -63,6 +65,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         tone: action.tone ?? state.tone,
         isLoading: !!action.autoRun,
         error: null,
+        requestId: null,
       };
     case "HIDE_MODAL":
       return {
@@ -72,6 +75,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         originalResult: null,
         selectionRect: null,
         error: null,
+        requestId: null,
       };
     case "SET_LOADING":
       return { ...state, isLoading: action.loading };
@@ -83,6 +87,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         originalResult: isFirstResult ? action.result : state.originalResult,
         isLoading: false,
         error: null,
+        requestId: action.requestId ?? state.requestId,
       };
     }
     case "SET_ERROR":

@@ -202,11 +202,19 @@ function splitIntoSentences(
 
 type Priority = "realtime" | "bulk";
 
+interface APIResponse {
+  content: string;
+  requestId?: string;
+}
+
+// Store request_id from last API call for feedback
+let lastRequestId: string | undefined;
+
 async function callAPI(
   systemPrompt: string,
   userText: string,
   priority: Priority = "realtime"
-): Promise<string> {
+): Promise<APIResponse> {
   const model = await fetchModelName();
 
   const headers: Record<string, string> = {
@@ -239,8 +247,12 @@ async function callAPI(
   }
 
   const data = await res.json();
+  lastRequestId = data.request_id;
 
-  return data.choices[0].message.content;
+  return {
+    content: data.choices[0].message.content,
+    requestId: data.request_id,
+  };
 }
 
 function getUserMessage(
@@ -296,8 +308,8 @@ async function processSentencesInParallel(text: string): Promise<string> {
         }
 
         const userMessage = getUserMessage("ANALYZE", maskedText);
-        const corrected = await callAPI(SYSTEM_PROMPT, userMessage, priority);
-        const trimmedCorrected = corrected.trim();
+        const { content } = await callAPI(SYSTEM_PROMPT, userMessage, priority);
+        const trimmedCorrected = content.trim();
         if (
           tokens.length > 0 &&
           tokens.some(
@@ -319,20 +331,28 @@ async function processSentencesInParallel(text: string): Promise<string> {
   return results.join("");
 }
 
+interface ProcessResult {
+  result: string | AnalyzeResult;
+  requestId?: string;
+}
+
 async function processText(
   action: Action,
   text: string,
   options?: { tone?: Tone; customInstruction?: string }
-): Promise<string | AnalyzeResult> {
+): Promise<ProcessResult> {
   if (action === "ANALYZE") {
     const correctedText = await processSentencesInParallel(text);
-    return generateIssuesFromDiff(text, correctedText);
+    return {
+      result: generateIssuesFromDiff(text, correctedText),
+      requestId: lastRequestId,
+    };
   }
 
   const userMessage = getUserMessage(action, text, options);
-  const response = await callAPI(SYSTEM_PROMPT, userMessage);
+  const { content, requestId } = await callAPI(SYSTEM_PROMPT, userMessage);
 
-  return response;
+  return { result: content, requestId };
 }
 
 browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
@@ -342,7 +362,9 @@ browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
   currentAction = msg.action;
 
   processText(msg.action, msg.text, msg.options)
-    .then((result) => respond({ success: true, result }))
+    .then(({ result, requestId }) =>
+      respond({ success: true, result, requestId })
+    )
     .catch((e: Error) => respond({ success: false, error: e.message }));
 
   return true;

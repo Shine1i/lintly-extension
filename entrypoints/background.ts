@@ -1,5 +1,7 @@
-import type { ProcessRequest, OffscreenMessage } from "@/lib/types";
+import type { ProcessRequest, OffscreenMessage, FeedbackMessage } from "@/lib/types";
 import { ExtensionQueryClient } from "@/lib/cache";
+
+const FEEDBACK_URL = "https://vllm.kernelvm.xyz/v1/feedback";
 
 const queryClient = new ExtensionQueryClient({
   defaultStaleTime: Infinity, // ML outputs are deterministic
@@ -76,6 +78,33 @@ export default defineBackground(() => {
     if (msg.type === "SET_TOKEN" && msg.token) {
       setToken(msg.token);
       respond({ success: true });
+      return true;
+    }
+
+    // Handle feedback submission
+    if (msg.type === "SUBMIT_FEEDBACK") {
+      const token = getToken();
+      if (!token || !msg.requestId) {
+        respond({ success: false, error: "Missing token or requestId" });
+        return true;
+      }
+
+      fetch(FEEDBACK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          request_id: msg.requestId,
+          accepted: msg.accepted,
+          user_edit: msg.userEdit,
+          issue_count: msg.issueCount,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => respond({ success: data.success }))
+        .catch(() => respond({ success: false }));
       return true;
     }
 

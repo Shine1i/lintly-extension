@@ -34,6 +34,7 @@ export interface ProcessResponse {
   success: boolean;
   result?: string | AnalyzeResult;
   error?: string;
+  requestId?: string;
 }
 
 export interface OffscreenMessage {
@@ -46,4 +47,12 @@ export interface OffscreenMessage {
     tone?: Tone;
     customInstruction?: string;
   };
+}
+
+export interface FeedbackMessage {
+  type: "SUBMIT_FEEDBACK";
+  requestId: string;
+  accepted: boolean;
+  userEdit?: string;
+  issueCount?: number;
 }
