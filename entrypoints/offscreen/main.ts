@@ -16,6 +16,10 @@ const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
 const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
 const FALLBACK_MODEL = "typix-medium-epo";
 
+// Store token and action from background
+let currentToken: string | undefined;
+let currentAction: Action = "ANALYZE";
+
 // Concurrency limiter to prevent overwhelming the server
 class ConcurrencyLimiter {
   private queue: Array<{
@@ -71,7 +75,7 @@ async function fetchModelName(): Promise<string> {
     if (data?.data?.[0]?.id) {
       cachedModelName = data.data[0].id;
       console.log("[Typix API] Using model:", cachedModelName);
-      return cachedModelName;
+      return cachedModelName as string;
     }
   } catch (e) {
     console.error("[Typix API] Failed to fetch model name:", e);
@@ -211,12 +215,19 @@ async function callAPI(
 
   const model = await fetchModelName();
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Priority": priority,
+    "X-Action": currentAction,
+  };
+
+  if (currentToken) {
+    headers["Authorization"] = `Bearer ${currentToken}`;
+  }
+
   const res = await fetch(API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Priority": priority,
-    },
+    headers,
     body: JSON.stringify({
       model,
       messages: [
@@ -355,6 +366,10 @@ browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
     console.log("[Typix API] Ignoring message (wrong target/type)");
     return;
   }
+
+  // Store token and action for API calls
+  currentToken = msg.token;
+  currentAction = msg.action;
 
   processText(msg.action, msg.text, msg.options)
     .then((result) => {

@@ -41,6 +41,7 @@ export interface OffscreenMessage {
   type: "GENERATE";
   action: Action;
   text: string;
+  token?: string;
   options?: {
     tone?: Tone;
     customInstruction?: string;
