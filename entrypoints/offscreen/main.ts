@@ -248,6 +248,7 @@ async function callAPI(
 
   const data = await res.json();
   lastRequestId = data.request_id;
+  console.log("[callAPI] request_id from API:", data.request_id);
 
   return {
     content: data.choices[0].message.content,

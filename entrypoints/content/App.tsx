@@ -31,7 +31,11 @@ function submitFeedback(
   issueCount?: number,
   userEdit?: string
 ) {
-  if (!requestId) return;
+  console.log("[submitFeedback] requestId:", requestId, "accepted:", accepted, "issueCount:", issueCount);
+  if (!requestId) {
+    console.log("[submitFeedback] No requestId, skipping");
+    return;
+  }
   const msg: FeedbackMessage = {
     type: "SUBMIT_FEEDBACK",
     requestId,
@@ -39,7 +43,9 @@ function submitFeedback(
     userEdit,
     issueCount,
   };
-  browser.runtime.sendMessage(msg).catch(() => {});
+  browser.runtime.sendMessage(msg).catch((err) => {
+    console.error("[submitFeedback] Error sending message:", err);
+  });
 }
 
 function calculateModalPosition(rect: SelectionRect): { x: number; y: number } {

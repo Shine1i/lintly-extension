@@ -84,11 +84,14 @@ export default defineBackground(() => {
     // Handle feedback submission
     if (msg.type === "SUBMIT_FEEDBACK") {
       const token = getToken();
+      console.log("[Feedback] token:", !!token, "requestId:", msg.requestId);
       if (!token || !msg.requestId) {
+        console.log("[Feedback] Missing token or requestId, skipping");
         respond({ success: false, error: "Missing token or requestId" });
         return true;
       }
 
+      console.log("[Feedback] Sending to", FEEDBACK_URL);
       fetch(FEEDBACK_URL, {
         method: "POST",
         headers: {
@@ -102,9 +105,18 @@ export default defineBackground(() => {
           issue_count: msg.issueCount,
         }),
       })
-        .then((res) => res.json())
-        .then((data) => respond({ success: data.success }))
-        .catch(() => respond({ success: false }));
+        .then((res) => {
+          console.log("[Feedback] Response status:", res.status);
+          return res.json();
+        })
+        .then((data) => {
+          console.log("[Feedback] Response data:", data);
+          respond({ success: data.success });
+        })
+        .catch((err) => {
+          console.error("[Feedback] Error:", err);
+          respond({ success: false });
+        });
       return true;
     }
 
