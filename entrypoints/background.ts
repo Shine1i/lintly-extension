@@ -4,7 +4,7 @@ import { ExtensionQueryClient } from "@/lib/cache";
 const FEEDBACK_URL = "https://vllm.kernelvm.xyz/v1/feedback";
 
 const queryClient = new ExtensionQueryClient({
-  defaultStaleTime: Infinity, // ML outputs are deterministic
+  defaultStaleTime: 1000 * 60 * 5, // 5 min cache - was Infinity but requestId needs fresh responses
 });
 
 // Token management - received from content script on typix.app
