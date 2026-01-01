@@ -15,9 +15,8 @@ function setToken(token: string) {
       token,
       expiresAt: (payload.exp || 0) * 1000,
     };
-    console.log("[Typix] Token stored from content script");
-  } catch (e) {
-    console.error("[Typix] Invalid token format:", e);
+  } catch {
+    // Invalid token format - ignore
   }
 }
 
@@ -25,7 +24,6 @@ function getToken(): string | null {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 5 * 60 * 1000) {
     return cachedToken.token;
   }
-  console.log("[Typix] No valid token - user needs to login at typix.app");
   return null;
 }
 

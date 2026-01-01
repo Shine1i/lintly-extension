@@ -7,9 +7,6 @@ export default defineContentScript({
   runAt: "document_idle",
 
   async main() {
-    console.log("[Typix Auth] Content script loaded on typix.app");
-
-    // Try to fetch token on load
     await fetchAndSendToken();
 
     // Listen for login events (check periodically)
@@ -31,20 +28,16 @@ async function fetchAndSendToken() {
       credentials: "include",
     });
 
-    if (!response.ok) {
-      console.log("[Typix Auth] Not logged in or token fetch failed:", response.status);
-      return;
-    }
+    if (!response.ok) return;
 
     const data = await response.json();
     if (data.token) {
-      console.log("[Typix Auth] Token fetched, sending to background");
       await browser.runtime.sendMessage({
         type: "SET_TOKEN",
         token: data.token,
       });
     }
-  } catch (e) {
-    console.error("[Typix Auth] Error fetching token:", e);
+  } catch {
+    // Token fetch failed - ignore
   }
 }

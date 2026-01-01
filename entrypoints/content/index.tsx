@@ -12,14 +12,11 @@ export default defineContentScript({
   cssInjectionMode: "ui",
 
   async main(ctx) {
-    console.log("[Typix] Creating shadow root UI...");
-
     const ui = await createShadowRootUi(ctx, {
       name: "typix-ui",
       position: "inline",
       anchor: "body",
       onMount: (container) => {
-        console.log("[Typix] Mounting React app...");
         setMirrorHost(container);
         const root = createRoot(container);
         root.render(
@@ -29,7 +26,6 @@ export default defineContentScript({
             </JotaiProvider>
           </ShadowDOMProvider>
         );
-        console.log("[Typix] React app rendered");
         return root;
       },
       onRemove: (root) => {
@@ -40,6 +36,5 @@ export default defineContentScript({
     });
 
     ui.mount();
-    console.log("[Typix] UI mounted");
   },
 });

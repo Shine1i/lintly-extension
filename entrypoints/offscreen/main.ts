@@ -74,11 +74,10 @@ async function fetchModelName(): Promise<string> {
     const data = await res.json();
     if (data?.data?.[0]?.id) {
       cachedModelName = data.data[0].id;
-      console.log("[Typix API] Using model:", cachedModelName);
       return cachedModelName as string;
     }
-  } catch (e) {
-    console.error("[Typix API] Failed to fetch model name:", e);
+  } catch {
+    // Failed to fetch model, use fallback
   }
 
   cachedModelName = FALLBACK_MODEL;
@@ -208,11 +207,6 @@ async function callAPI(
   userText: string,
   priority: Priority = "realtime"
 ): Promise<string> {
-  console.log(
-    "[Typix API] Calling API with text:",
-    userText.substring(0, 100) + "..."
-  );
-
   const model = await fetchModelName();
 
   const headers: Record<string, string> = {
@@ -276,7 +270,6 @@ function getUserMessage(
 
 async function processSentencesInParallel(text: string): Promise<string> {
   const parts = splitIntoSentences(text);
-  console.log("[Typix API] Split into", parts.length, "parts");
 
   // Count sentences that will actually need API calls
   const contentParts = parts.filter(
@@ -286,9 +279,6 @@ async function processSentencesInParallel(text: string): Promise<string> {
 
   // Bulk = more than 3 sentences needing processing
   const priority: Priority = contentParts.length > 3 ? "bulk" : "realtime";
-  console.log(
-    `[Typix API] Priority: ${priority} (${contentParts.length} sentences to process)`
-  );
 
   // Process sentences with concurrency limit (max 5 parallel requests)
   const results = await Promise.all(
@@ -305,11 +295,6 @@ async function processSentencesInParallel(text: string): Promise<string> {
           return sentence;
         }
 
-        // Call API with priority
-        console.log(
-          `[Typix API] Processing sentence ${index + 1}:`,
-          trimmedSentence.substring(0, 30) + "..."
-        );
         const userMessage = getUserMessage("ANALYZE", maskedText);
         const corrected = await callAPI(SYSTEM_PROMPT, userMessage, priority);
         const trimmedCorrected = corrected.trim();
@@ -339,18 +324,9 @@ async function processText(
   text: string,
   options?: { tone?: Tone; customInstruction?: string }
 ): Promise<string | AnalyzeResult> {
-  console.log("[Typix API] Processing action:", action);
-
   if (action === "ANALYZE") {
-    // Process sentences in parallel for faster results
     const correctedText = await processSentencesInParallel(text);
-    console.log(
-      "[Typix API] Corrected text:",
-      correctedText.substring(0, 100) + "..."
-    );
-    const result = generateIssuesFromDiff(text, correctedText);
-    console.log("[Typix API] Generated issues:", result.issues.length);
-    return result;
+    return generateIssuesFromDiff(text, correctedText);
   }
 
   const userMessage = getUserMessage(action, text, options);
@@ -360,26 +336,14 @@ async function processText(
 }
 
 browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
-  console.log("[Typix API] Received message:", msg);
+  if (msg.target !== "offscreen" || msg.type !== "GENERATE") return;
 
-  if (msg.target !== "offscreen" || msg.type !== "GENERATE") {
-    console.log("[Typix API] Ignoring message (wrong target/type)");
-    return;
-  }
-
-  // Store token and action for API calls
   currentToken = msg.token;
   currentAction = msg.action;
 
   processText(msg.action, msg.text, msg.options)
-    .then((result) => {
-      console.log("[Typix API] Sending success response:", result);
-      respond({ success: true, result });
-    })
-    .catch((e: Error) => {
-      console.log("[Typix API] Sending error response:", e.message);
-      respond({ success: false, error: e.message });
-    });
+    .then((result) => respond({ success: true, result }))
+    .catch((e: Error) => respond({ success: false, error: e.message }));
 
   return true;
 });
