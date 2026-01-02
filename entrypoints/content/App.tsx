@@ -27,11 +27,9 @@ import { trackEvent } from "@/lib/analytics";
 
 function submitFeedback(
   requestId: string | null,
-  accepted: boolean,
-  issueCount?: number,
-  userEdit?: string
+  issueCount?: number
 ) {
-  console.log("[submitFeedback] requestId:", requestId, "accepted:", accepted, "issueCount:", issueCount);
+  console.log("[submitFeedback] requestId:", requestId, "issueCount:", issueCount);
   if (!requestId) {
     console.log("[submitFeedback] No requestId, skipping");
     return;
@@ -39,8 +37,6 @@ function submitFeedback(
   const msg: FeedbackMessage = {
     type: "SUBMIT_FEEDBACK",
     requestId,
-    accepted,
-    userEdit,
     issueCount,
   };
   browser.runtime.sendMessage(msg).catch((err) => {
@@ -292,8 +288,8 @@ export default function App() {
         },
       });
 
-      // Track that user accepted a fix
-      submitFeedback(state.requestId, true, state.result.issues.length);
+      // Track updated issue_count only (acceptance removed)
+      submitFeedback(state.requestId, state.result.issues.length);
 
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
@@ -382,8 +378,8 @@ export default function App() {
         },
       });
 
-      // Track that user accepted a fix
-      submitFeedback(state.requestId, true, state.result.issues.length);
+      // Track updated issue_count only (acceptance removed)
+      submitFeedback(state.requestId, state.result.issues.length);
 
       await reanalyzeSentenceRange(newText, updatedSentenceRange, clearedIssues);
     },
@@ -415,7 +411,7 @@ export default function App() {
         state.result && typeof state.result === "object"
           ? state.result.issues.length
           : undefined;
-      submitFeedback(state.requestId, true, issueCount);
+      submitFeedback(state.requestId, issueCount);
     }
     selectionSnapshotRef.current = null;
     dispatch({ type: "HIDE_MODAL" });
@@ -466,7 +462,7 @@ export default function App() {
       skippedCount,
     });
 
-    submitFeedback(state.requestId, true, issues.length);
+    submitFeedback(state.requestId, issues.length);
   }, [dispatch, state.result, state.sourceText, state.requestId]);
 
   const handleToolbarAction = useCallback((action: Action, tone?: Tone) => {

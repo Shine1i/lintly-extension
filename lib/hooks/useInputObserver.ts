@@ -6,6 +6,10 @@ export interface InputObserverState {
   text: string;
   isTyping: boolean;
   elementRect: DOMRect | null;
+  sessionId: string | null;
+  editorKind: string | null;
+  editorSignature: string | null;
+  pageUrl: string | null;
   /** Used to shift overlays without reflowing on every keystroke. */
   charDelta: number;
   /** Anchor for incremental updates while typing. */
@@ -138,9 +142,43 @@ const INITIAL_STATE: InputObserverState = {
   text: "",
   isTyping: false,
   elementRect: null,
+  sessionId: null,
+  editorKind: null,
+  editorSignature: null,
+  pageUrl: null,
   charDelta: 0,
   changePosition: 0,
 };
+
+function generateSessionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function getEditorKind(element: HTMLElement): string {
+  if (element instanceof HTMLTextAreaElement) return "textarea";
+  if (element instanceof HTMLInputElement) return `input:${element.type || "text"}`;
+  if (element.isContentEditable) return "contenteditable";
+  return element.tagName.toLowerCase();
+}
+
+function buildEditorSignature(element: HTMLElement): string {
+  const attrs = [
+    element.tagName.toLowerCase(),
+    element instanceof HTMLInputElement ? element.type : "",
+    element.getAttribute("name"),
+    element.getAttribute("id"),
+    typeof element.className === "string" ? element.className : "",
+    element.getAttribute("role"),
+    element.getAttribute("aria-label"),
+    element.getAttribute("placeholder"),
+    getAriaLabelledbyText(element),
+    getAssociatedLabelText(element),
+  ];
+  return attrs.filter(Boolean).join("|").trim();
+}
 
 function isValidEditableElement(element: Element | null): element is HTMLElement {
   if (!element || !(element instanceof HTMLElement)) return false;
@@ -374,6 +412,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
   const lastStableLengthRef = useRef<number>(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeElementRef = useRef<HTMLElement | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const isTypingRef = useRef(false);
   const isSelectingRef = useRef(false);
   const pendingInputRef = useRef<PendingInputInfo | null>(null);
@@ -388,6 +427,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
   const resetState = useCallback(() => {
     clearDebounce();
     activeElementRef.current = null;
+    sessionIdRef.current = null;
     isTypingRef.current = false;
     isSelectingRef.current = false;
     pendingInputRef.current = null;
@@ -417,6 +457,7 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
   const setActiveElement = useCallback(
     (element: HTMLElement) => {
       activeElementRef.current = element;
+      sessionIdRef.current = generateSessionId();
       const { text, rect } = readElementSnapshot(element);
       lastStableTextRef.current = text;
       lastStableLengthRef.current = text.length;
@@ -426,6 +467,10 @@ export function useInputObserver(options?: InputObserverOptions): InputObserverS
         elementRect: rect,
         text,
         isTyping: false,
+        sessionId: sessionIdRef.current,
+        editorKind: getEditorKind(element),
+        editorSignature: buildEditorSignature(element),
+        pageUrl: typeof window !== "undefined" ? window.location.href : null,
         charDelta: 0,
         changePosition: 0,
       }));

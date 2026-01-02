@@ -24,9 +24,15 @@ export interface ProcessRequest {
   type: "PROCESS_TEXT";
   action: Action;
   text: string;
+  sessionId?: string;
+  editorKind?: string | null;
+  editorSignature?: string | null;
+  pageUrl?: string | null;
   options?: {
     tone?: Tone;
     customInstruction?: string;
+    /** True when this is a partial re-analysis (avoid logging training data). */
+    isPartial?: boolean;
   };
 }
 
@@ -35,6 +41,8 @@ export interface ProcessResponse {
   result?: string | AnalyzeResult;
   error?: string;
   requestId?: string;
+  issueCount?: number;
+  perSentenceIssueCounts?: { sentenceIndex: number; count: number }[];
 }
 
 export interface OffscreenMessage {
@@ -43,6 +51,10 @@ export interface OffscreenMessage {
   action: Action;
   text: string;
   token?: string;
+  sessionId?: string;
+  editorKind?: string | null;
+  editorSignature?: string | null;
+  pageUrl?: string | null;
   options?: {
     tone?: Tone;
     customInstruction?: string;
@@ -52,7 +64,6 @@ export interface OffscreenMessage {
 export interface FeedbackMessage {
   type: "SUBMIT_FEEDBACK";
   requestId: string;
-  accepted: boolean;
   userEdit?: string;
   issueCount?: number;
 }

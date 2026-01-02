@@ -11,57 +11,19 @@ import {
   TONE_PROMPT_SUFFIX,
 } from "@/lib/prompts";
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
+import { buildIssueSentenceContexts, countIssuesPerSentence } from "@/lib/sentences";
 
 const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
 const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
 const FALLBACK_MODEL = "typix-medium-epo";
+const CLIENT_VERSION =
+  typeof browser !== "undefined" && browser.runtime?.getManifest
+    ? browser.runtime.getManifest().version
+    : "ext-unknown";
 
 // Store token and action from background
 let currentToken: string | undefined;
 let currentAction: Action = "ANALYZE";
-
-// Concurrency limiter to prevent overwhelming the server
-class ConcurrencyLimiter {
-  private queue: Array<{
-    fn: () => Promise<unknown>;
-    resolve: (value: unknown) => void;
-    reject: (error: unknown) => void;
-  }> = [];
-  private running = 0;
-
-  constructor(private maxConcurrent = 5) {}
-
-  async run<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push({
-        fn: fn as () => Promise<unknown>,
-        resolve: resolve as (value: unknown) => void,
-        reject,
-      });
-      this.processQueue();
-    });
-  }
-
-  private async processQueue() {
-    if (this.running >= this.maxConcurrent || this.queue.length === 0) return;
-
-    const item = this.queue.shift();
-    if (!item) return;
-
-    this.running++;
-    try {
-      const result = await item.fn();
-      item.resolve(result);
-    } catch (e) {
-      item.reject(e);
-    } finally {
-      this.running--;
-      this.processQueue();
-    }
-  }
-}
-
-const apiLimiter = new ConcurrencyLimiter(5);
 
 let cachedModelName: string | null = null;
 
@@ -207,13 +169,23 @@ interface APIResponse {
   requestId?: string;
 }
 
-// Store request_id from last API call for feedback
-let lastRequestId: string | undefined;
+interface APIMeta {
+  analysisId?: string;
+  sourceText?: string;
+  issueCount?: number;
+  clientVersion?: string;
+  skipTraining?: boolean;
+  sessionId?: string;
+  editorKind?: string | null;
+  editorSignature?: string | null;
+  pageUrl?: string | null;
+}
 
 async function callAPI(
   systemPrompt: string,
   userText: string,
-  priority: Priority = "realtime"
+  priority: Priority = "realtime",
+  meta?: APIMeta
 ): Promise<APIResponse> {
   const model = await fetchModelName();
 
@@ -222,6 +194,34 @@ async function callAPI(
     "X-Priority": priority,
     "X-Action": currentAction,
   };
+
+  if (meta?.analysisId) {
+    headers["X-Analysis-Id"] = meta.analysisId;
+  }
+  if (meta?.sessionId) {
+    headers["X-Session-Id"] = meta.sessionId;
+  }
+  if (meta?.editorKind) {
+    headers["X-Editor-Kind"] = meta.editorKind;
+  }
+  if (meta?.editorSignature) {
+    headers["X-Editor-Signature"] = meta.editorSignature;
+  }
+  if (meta?.pageUrl) {
+    headers["X-Page-Url"] = meta.pageUrl;
+  }
+  if (meta?.sourceText) {
+    headers["X-Source-Text"] = meta.sourceText;
+  }
+  if (meta?.clientVersion) {
+    headers["X-Client-Version"] = meta.clientVersion;
+  }
+  if (meta?.issueCount !== undefined) {
+    headers["X-Issue-Count"] = String(meta.issueCount);
+  }
+  if (meta?.skipTraining) {
+    headers["X-Skip-Training"] = "1";
+  }
 
   if (currentToken) {
     headers["Authorization"] = `Bearer ${currentToken}`;
@@ -239,6 +239,20 @@ async function callAPI(
       temperature: 0.2,
       min_p: 0.15,
       repetition_penalty: 1.05,
+      meta: meta
+        ? {
+            analysis_id: meta.analysisId,
+            session_id: meta.sessionId,
+            source_text: meta.sourceText,
+            issue_count: meta.issueCount,
+            action: currentAction,
+            client_version: meta.clientVersion,
+            skip_training: meta.skipTraining,
+            editor_kind: meta.editorKind,
+            editor_signature: meta.editorSignature,
+            page_url: meta.pageUrl,
+          }
+        : undefined,
     }),
   });
 
@@ -247,8 +261,6 @@ async function callAPI(
   }
 
   const data = await res.json();
-  lastRequestId = data.request_id;
-  console.log("[callAPI] request_id from API:", data.request_id);
 
   return {
     content: data.choices[0].message.content,
@@ -281,77 +293,85 @@ function getUserMessage(
   }
 }
 
-async function processSentencesInParallel(text: string): Promise<string> {
-  const parts = splitIntoSentences(text);
-
-  // Count sentences that will actually need API calls
-  const contentParts = parts.filter(
-    ({ sentence, isContent }) =>
-      isContent && shouldAnalyzeSentence(maskUrls(sentence.trim()).maskedText)
-  );
-
-  // Bulk = more than 3 sentences needing processing
-  const priority: Priority = contentParts.length > 3 ? "bulk" : "realtime";
-
-  // Process sentences with concurrency limit (max 5 parallel requests)
-  const results = await Promise.all(
-    parts.map(({ sentence, isContent }, index) =>
-      apiLimiter.run(async () => {
-        // Skip non-content (whitespace only)
-        if (!isContent) {
-          return sentence;
-        }
-
-        const trimmedSentence = sentence.trim();
-        const { maskedText, tokens } = maskUrls(trimmedSentence);
-        if (!shouldAnalyzeSentence(maskedText)) {
-          return sentence;
-        }
-
-        const userMessage = getUserMessage("ANALYZE", maskedText);
-        const { content } = await callAPI(SYSTEM_PROMPT, userMessage, priority);
-        const trimmedCorrected = content.trim();
-        if (
-          tokens.length > 0 &&
-          tokens.some(
-            ({ placeholder }) => !trimmedCorrected.includes(placeholder)
-          )
-        ) {
-          return sentence;
-        }
-        const restoredCorrected = restoreUrls(trimmedCorrected, tokens);
-
-        // Preserve original whitespace around the sentence
-        const leadingWs = sentence.match(/^\s*/)?.[0] || "";
-        const trailingWs = sentence.match(/\s*$/)?.[0] || "";
-        return leadingWs + restoredCorrected + trailingWs;
-      })
-    )
-  );
-
-  return results.join("");
-}
-
 interface ProcessResult {
   result: string | AnalyzeResult;
   requestId?: string;
+  issueCount?: number;
+  perSentenceIssueCounts?: { sentenceIndex: number; count: number }[];
 }
 
 async function processText(
   action: Action,
   text: string,
-  options?: { tone?: Tone; customInstruction?: string }
+  options?: { tone?: Tone; customInstruction?: string; isPartial?: boolean },
+  meta?: APIMeta
 ): Promise<ProcessResult> {
   if (action === "ANALYZE") {
-    const correctedText = await processSentencesInParallel(text);
+    const analysisId = crypto.randomUUID();
+    const parts = splitIntoSentences(text);
+    const contentParts = parts.filter(
+      ({ sentence, isContent }) =>
+        isContent && shouldAnalyzeSentence(maskUrls(sentence.trim()).maskedText)
+    );
+    const priority: Priority = contentParts.length > 3 ? "bulk" : "realtime";
+
+    const userMessage = getUserMessage("ANALYZE", text);
+    const { content, requestId } = await callAPI(
+      SYSTEM_PROMPT,
+      userMessage,
+      priority,
+      {
+        analysisId,
+        sourceText: text,
+        clientVersion: CLIENT_VERSION,
+        skipTraining: options?.isPartial === true,
+        sessionId: meta?.sessionId,
+        editorKind: meta?.editorKind,
+        editorSignature: meta?.editorSignature,
+        pageUrl: meta?.pageUrl,
+      }
+    );
+
+    const correctedText = content.trim();
+    const issues = generateIssuesFromDiff(text, correctedText);
+    const { issueContexts } = buildIssueSentenceContexts(text, issues.issues || []);
+    const perSentenceIssueCounts = countIssuesPerSentence(issueContexts);
+    const issueCount = issues.issues?.length ?? 0;
+
+    if (requestId && currentToken) {
+      // Fire-and-forget: push exact counts so API can override heuristics.
+      fetch("https://vllm.kernelvm.xyz/v1/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          request_id: requestId,
+          accepted: null, // do not change acceptance here
+          issue_count: issueCount,
+          sentence_issue_counts: perSentenceIssueCounts,
+        }),
+      }).catch(() => {});
+    }
+
     return {
-      result: generateIssuesFromDiff(text, correctedText),
-      requestId: lastRequestId,
+      result: issues,
+      requestId: requestId || analysisId,
+      issueCount,
+      perSentenceIssueCounts,
     };
   }
 
   const userMessage = getUserMessage(action, text, options);
-  const { content, requestId } = await callAPI(SYSTEM_PROMPT, userMessage);
+  const { content, requestId } = await callAPI(SYSTEM_PROMPT, userMessage, "realtime", {
+    skipTraining: options?.isPartial === true,
+    sessionId: meta?.sessionId,
+    editorKind: meta?.editorKind,
+    editorSignature: meta?.editorSignature,
+    pageUrl: meta?.pageUrl,
+    clientVersion: CLIENT_VERSION,
+  });
 
   return { result: content, requestId };
 }
@@ -362,7 +382,12 @@ browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
   currentToken = msg.token;
   currentAction = msg.action;
 
-  processText(msg.action, msg.text, msg.options)
+  processText(msg.action, msg.text, msg.options, {
+    sessionId: msg.sessionId,
+    editorKind: msg.editorKind,
+    editorSignature: msg.editorSignature,
+    pageUrl: msg.pageUrl,
+  })
     .then(({ result, requestId }) => {
       console.log("[offscreen] Responding with requestId:", requestId);
       respond({ success: true, result, requestId });

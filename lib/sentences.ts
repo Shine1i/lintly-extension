@@ -20,6 +20,11 @@ export interface IssueSentenceContext {
   relativeEnd: number;
 }
 
+export interface SentenceIssueCount {
+  sentenceIndex: number;
+  count: number;
+}
+
 const sentenceSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
     ? new Intl.Segmenter("en", { granularity: "sentence" })
@@ -196,4 +201,17 @@ export function buildIssueSentenceContexts(
   }
 
   return { sentenceRanges, issueContexts: contexts };
+}
+
+export function countIssuesPerSentence(
+  issueContexts: Map<Issue, IssueSentenceContext>
+): SentenceIssueCount[] {
+  const counts = new Map<number, number>();
+  for (const context of issueContexts.values()) {
+    counts.set(context.sentenceIndex, (counts.get(context.sentenceIndex) || 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([sentenceIndex, count]) => ({
+    sentenceIndex,
+    count,
+  }));
 }

@@ -101,8 +101,6 @@ export default defineBackground(() => {
         },
         body: JSON.stringify({
           request_id: msg.requestId,
-          accepted: msg.accepted,
-          user_edit: msg.userEdit,
           issue_count: msg.issueCount,
         }),
       })
@@ -129,6 +127,10 @@ export default defineBackground(() => {
         action: msg.action,
         text: msg.text,
         token: token || undefined,
+        sessionId: msg.sessionId,
+        editorKind: msg.editorKind,
+        editorSignature: msg.editorSignature,
+        pageUrl: msg.pageUrl,
         options: msg.options,
       };
 

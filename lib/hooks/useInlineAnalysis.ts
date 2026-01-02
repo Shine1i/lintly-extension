@@ -4,6 +4,7 @@ import type { SentenceRange } from "../sentences";
 import { mergeIssuesForSentence } from "../issueMerge";
 import { rebaseIssueOffsets } from "../issueOffsets";
 import { getExplicitIssueRange } from "../textPositioning/occurrences";
+import { buildIssueSentenceContexts, countIssuesPerSentence } from "../sentences";
 
 function getIssueSignature(issue: Issue): string {
   return JSON.stringify([
@@ -65,6 +66,7 @@ export interface InlineAnalysisState {
   error: string | null;
   lastAnalyzedText: string;
   requestId: string | null;
+  perSentenceIssueCounts: { sentenceIndex: number; count: number }[];
 }
 
 interface UseInlineAnalysisOptions {
@@ -75,9 +77,16 @@ interface ReanalyzeSentenceOptions {
   skipIssueClear?: boolean;
 }
 
+interface AnalysisMeta {
+  sessionId?: string | null;
+  editorKind?: string | null;
+  editorSignature?: string | null;
+  pageUrl?: string | null;
+}
+
 interface UseInlineAnalysisReturn {
   state: InlineAnalysisState;
-  analyze: (text: string) => Promise<void>;
+  analyze: (text: string, meta?: AnalysisMeta) => Promise<void>;
   clearResult: () => void;
   /** Keep UI responsive by removing a single issue without a round-trip. */
   removeIssue: (issue: Issue) => void;
@@ -104,6 +113,7 @@ export function useInlineAnalysis(
     error: null,
     lastAnalyzedText: "",
     requestId: null,
+    perSentenceIssueCounts: [],
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -111,6 +121,7 @@ export function useInlineAnalysis(
   const sentenceAnalyzeIdRef = useRef(0);
   const dismissedIssuesRef = useRef<Issue[]>([]);
   const dismissedTextRef = useRef("");
+  const lastMetaRef = useRef<AnalysisMeta | null>(null);
 
   const syncDismissedIssues = useCallback((nextText: string) => {
     if (!nextText) {
@@ -130,7 +141,7 @@ export function useInlineAnalysis(
     dismissedTextRef.current = nextText;
   }, []);
 
-  const analyze = useCallback(async (text: string) => {
+  const analyze = useCallback(async (text: string, meta?: AnalysisMeta) => {
     if (!text || text.trim().length < minTextLength) {
       dismissedIssuesRef.current = [];
       dismissedTextRef.current = "";
@@ -153,6 +164,7 @@ export function useInlineAnalysis(
     abortControllerRef.current = new AbortController();
 
     syncDismissedIssues(text);
+    lastMetaRef.current = meta || lastMetaRef.current;
 
     const currentId = ++analyzeIdRef.current;
 
@@ -162,15 +174,19 @@ export function useInlineAnalysis(
       error: null,
     }));
 
-    try {
-      const response: ProcessResponse = await browser.runtime.sendMessage({
-        type: "PROCESS_TEXT",
-        action: "ANALYZE",
-        text: text,
-        options: {
-          tone: "professional",
-        },
-      });
+      try {
+        const response: ProcessResponse = await browser.runtime.sendMessage({
+          type: "PROCESS_TEXT",
+          action: "ANALYZE",
+          text: text,
+          sessionId: meta?.sessionId ?? lastMetaRef.current?.sessionId ?? undefined,
+          editorKind: meta?.editorKind ?? lastMetaRef.current?.editorKind ?? undefined,
+          editorSignature: meta?.editorSignature ?? lastMetaRef.current?.editorSignature ?? undefined,
+          pageUrl: meta?.pageUrl ?? lastMetaRef.current?.pageUrl ?? undefined,
+          options: {
+            tone: "professional",
+          },
+        });
 
       if (currentId !== analyzeIdRef.current) {
         return;
@@ -183,12 +199,15 @@ export function useInlineAnalysis(
           result.issues || [],
           dismissedIssuesRef.current
         );
+        const { issueContexts } = buildIssueSentenceContexts(text, filteredIssues);
+        const perSentenceIssueCounts = countIssuesPerSentence(issueContexts);
         setState({
           isAnalyzing: false,
           issues: filteredIssues,
           error: null,
           lastAnalyzedText: text,
           requestId: response.requestId || null,
+          perSentenceIssueCounts: response.perSentenceIssueCounts || perSentenceIssueCounts,
         });
       } else {
         setState((prev) => ({
@@ -225,6 +244,7 @@ export function useInlineAnalysis(
     analyzeIdRef.current++;
     dismissedIssuesRef.current = [];
     dismissedTextRef.current = "";
+    lastMetaRef.current = null;
 
     setState({
       isAnalyzing: false,
@@ -232,6 +252,7 @@ export function useInlineAnalysis(
       error: null,
       lastAnalyzedText: "",
       requestId: null,
+      perSentenceIssueCounts: [],
     });
   }, []);
 
@@ -333,8 +354,13 @@ export function useInlineAnalysis(
           type: "PROCESS_TEXT",
           action: "ANALYZE",
           text: sentenceText,
+          sessionId: lastMetaRef.current?.sessionId ?? undefined,
+          editorKind: lastMetaRef.current?.editorKind ?? undefined,
+          editorSignature: lastMetaRef.current?.editorSignature ?? undefined,
+          pageUrl: lastMetaRef.current?.pageUrl ?? undefined,
           options: {
             tone: "professional",
+            isPartial: true,
           },
         });
 
@@ -360,6 +386,16 @@ export function useInlineAnalysis(
             error: null,
             lastAnalyzedText: fullText,
             requestId: response.requestId || prev.requestId,
+            perSentenceIssueCounts: (() => {
+              const mergedIssues = mergeIssuesForSentence(
+                fullText,
+                sentenceRange,
+                prev.issues,
+                result.issues || []
+              );
+              const { issueContexts } = buildIssueSentenceContexts(fullText, mergedIssues);
+              return countIssuesPerSentence(issueContexts);
+            })(),
           }));
         } else {
           setState((prev) => ({

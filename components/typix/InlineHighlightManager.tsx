@@ -7,14 +7,7 @@ import type { Issue, FeedbackMessage } from "@/lib/types";
 import { getElementText, isWordWebEditor } from "@/lib/textPositioning";
 import { findSentenceRangeAt, getSentenceRanges } from "@/lib/sentences";
 
-function submitFeedback(requestId: string | null, accepted: boolean, issueCount?: number) {
-  if (!requestId) return;
-  const msg: FeedbackMessage = {
-    type: "SUBMIT_FEEDBACK",
-    requestId,
-    accepted,
-    issueCount,
-  };
+function sendFeedback(msg: FeedbackMessage) {
   browser.runtime.sendMessage(msg).catch(() => {});
 }
 
@@ -40,7 +33,17 @@ export function InlineHighlightManager({
   minTextLength = 10,
   debounceMs = 400,
 }: InlineHighlightManagerProps) {
-  const { activeElement, text, isTyping, charDelta, changePosition } = useInputObserver({
+  const {
+    activeElement,
+    text,
+    isTyping,
+    charDelta,
+    changePosition,
+    sessionId,
+    editorKind,
+    editorSignature,
+    pageUrl,
+  } = useInputObserver({
     enabled: isEnabled,
     minTextLength,
     debounceMs,
@@ -102,19 +105,30 @@ export function InlineHighlightManager({
 
     const analysisText = getElementText(activeElement);
     if (analysisText && analysisText.length >= minTextLength) {
-      analyze(analysisText);
+      analyze(analysisText, {
+        sessionId: sessionId ?? undefined,
+        editorKind: editorKind ?? undefined,
+        editorSignature: editorSignature ?? undefined,
+        pageUrl: pageUrl ?? undefined,
+      });
     } else {
       clearResult();
     }
-  }, [isEnabled, activeElement, text, isTyping, minTextLength, analyze, clearResult, isWordWeb]);
+  }, [isEnabled, activeElement, text, isTyping, minTextLength, analyze, clearResult, isWordWeb, sessionId, editorKind, editorSignature, pageUrl]);
 
   // Keep idle typing fast by removing fixed issues without full re-analysis.
   const handleIssueFixed = useCallback(
     async ({ issue, sentenceAnchor, sentenceIssues }: IssueFixContext) => {
       console.log("[Typix] Fix applied:", issue.original, "→", issue.suggestion);
 
-      // Send feedback to API
-      submitFeedback(analysisState.requestId, true, analysisState.issues.length);
+      // Send issue_count only; acceptance no longer tracked per sentence.
+      if (analysisState.requestId) {
+        sendFeedback({
+          type: "SUBMIT_FEEDBACK",
+          requestId: analysisState.requestId,
+          issueCount: analysisState.issues.length,
+        });
+      }
 
       const previousText = analysisState.lastAnalyzedText;
       const issuesToRemove =
@@ -126,22 +140,22 @@ export function InlineHighlightManager({
         removeIssue(issueToRemove);
       }
 
-      const fullText = activeElement ? getElementText(activeElement) : "";
-      if (activeElement && previousText && fullText && previousText !== fullText) {
-        rebaseIssues(previousText, fullText);
+      const currentText = activeElement ? getElementText(activeElement) : "";
+      if (activeElement && previousText && currentText && previousText !== currentText) {
+        rebaseIssues(previousText, currentText);
       }
 
       if (!activeElement || sentenceAnchor < 0) {
         return;
       }
 
-      const sentenceRange = findSentenceRangeAt(getSentenceRanges(fullText), sentenceAnchor);
+      const sentenceRange = findSentenceRangeAt(getSentenceRanges(currentText), sentenceAnchor);
       if (!sentenceRange) {
         return;
       }
 
       skipNextAnalyzeRef.current = true;
-      await reanalyzeSentence(fullText, sentenceRange, {
+      await reanalyzeSentence(currentText, sentenceRange, {
         skipIssueClear: Boolean(sentenceIssues && sentenceIssues.length > 0),
       });
     },
@@ -150,9 +164,18 @@ export function InlineHighlightManager({
 
   const handleIssueDismissed = useCallback(
     (issue: Issue) => {
+      const issueCountBeforeDismiss = analysisState.issues.length;
       dismissIssue(issue, analysisState.lastAnalyzedText);
+      // Still record issue_count for context; acceptance removed.
+      if (analysisState.requestId) {
+        sendFeedback({
+          type: "SUBMIT_FEEDBACK",
+          requestId: analysisState.requestId,
+          issueCount: issueCountBeforeDismiss,
+        });
+      }
     },
-    [dismissIssue, analysisState.lastAnalyzedText]
+    [dismissIssue, analysisState.lastAnalyzedText, analysisState.issues.length, analysisState.requestId]
   );
 
   if (!isEnabled || !activeElement || isWordWeb) {
