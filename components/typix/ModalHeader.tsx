@@ -1,29 +1,16 @@
-import { ChevronDown } from "lucide-react";
-import type { Issue, Tone, Severity } from "@/lib/types";
-import { Button } from "@/components/ui/button";
+import type { Issue, Severity } from "@/lib/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 interface ModalHeaderProps {
   issues: Issue[];
-  tone: Tone;
-  onToneChange: (tone: Tone) => void;
 }
-
-const TONES: { value: Tone; label: string }[] = [
-  { value: "formal", label: "Formal" },
-  { value: "casual", label: "Casual" },
-  { value: "friendly", label: "Friendly" },
-  { value: "academic", label: "Academic" },
-];
 
 function getHealthDotColor(issueCount: number): string {
   if (issueCount === 0) return "bg-emerald-500";
@@ -50,7 +37,7 @@ function getIssueTypeLabel(type: string): string {
     .join(" ");
 }
 
-export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
+export function ModalHeader({ issues }: ModalHeaderProps) {
   const healthDotColor = getHealthDotColor(issues.length);
   const iconUrl =
     typeof browser !== "undefined"
@@ -65,8 +52,6 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
     {} as Record<string, number>
   );
 
-  const currentToneLabel = TONES.find((t) => t.value === tone)?.label || "Professional";
-
   return (
     <header className="h-12 flex items-center justify-between px-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-20">
       <div className="flex items-center gap-2">
@@ -74,29 +59,6 @@ export function ModalHeader({ issues, tone, onToneChange }: ModalHeaderProps) {
         <span className="text-xs font-semibold text-foreground">Typix</span>
       </div>
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 rounded-xl border-border/60 hover:border-border bg-background"
-            >
-              <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Tone</span>
-              <span className="text-xs text-foreground font-semibold">{currentToneLabel}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[150px] rounded-2xl">
-            <DropdownMenuRadioGroup value={tone} onValueChange={(v) => onToneChange(v as Tone)}>
-              {TONES.map((t) => (
-                <DropdownMenuRadioItem key={t.value} value={t.value} className="text-xs rounded-xl mx-1">
-                  {t.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
