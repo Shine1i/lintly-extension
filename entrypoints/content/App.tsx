@@ -498,7 +498,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "l") {
+      if (e.altKey && e.key.toLowerCase() === "w") {
         e.preventDefault();
 
         const activeElement = document.activeElement;
@@ -626,8 +626,6 @@ export default function App() {
         position={state.modalPosition}
         onClose={() => dispatch({ type: "HIDE_MODAL" })}
         sourceText={state.sourceText}
-        tone={state.tone}
-        onToneChange={(tone) => dispatch({ type: "SET_TONE", tone })}
         isLoading={state.isLoading}
         result={state.result}
         error={state.error}

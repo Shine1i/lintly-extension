@@ -4,15 +4,13 @@ import { ModalHeader } from "./ModalHeader";
 import { TextSurface } from "./TextSurface";
 import { BottomInput } from "./BottomInput";
 import { Button } from "@/components/ui/button";
-import type { AnalyzeResult, Issue, Tone } from "@/lib/types";
+import type { AnalyzeResult, Issue } from "@/lib/types";
 
 interface TypixModalProps {
   isVisible: boolean;
   position: { x: number; y: number };
   onClose: () => void;
   sourceText: string;
-  tone: Tone;
-  onToneChange: (tone: Tone) => void;
   isLoading: boolean;
   result: string | AnalyzeResult | null;
   error: string | null;
@@ -32,8 +30,6 @@ export function TypixModal({
   position,
   onClose,
   sourceText,
-  tone,
-  onToneChange,
   isLoading,
   result,
   error,
@@ -154,11 +150,7 @@ export function TypixModal({
         className="w-[560px] h-[380px] bg-background rounded-2xl shadow-soft flex overflow-hidden animate-in border border-border/40 ring-1 ring-black/5 dark:ring-white/5"
       >
         <main className="flex-1 flex flex-col min-w-0 bg-background relative rounded-2xl overflow-hidden">
-          <ModalHeader
-            issues={issues}
-            tone={tone}
-            onToneChange={onToneChange}
-          />
+          <ModalHeader issues={issues} />
 
           {error ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
