@@ -67,8 +67,11 @@ export default defineBackground(() => {
   // Open onboarding on first install
   browser.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === "install") {
+      const baseUrl = import.meta.env.MODE === "production"
+        ? "https://typix.app"
+        : "http://localhost:3000";
       await browser.tabs.create({
-        url: "http://localhost:3000/signup",
+        url: `${baseUrl}/signup`,
       });
     }
   });
