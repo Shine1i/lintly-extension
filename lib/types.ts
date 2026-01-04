@@ -50,7 +50,6 @@ export interface OffscreenMessage {
   type: "GENERATE";
   action: Action;
   text: string;
-  token?: string;
   sessionId?: string;
   editorKind?: string | null;
   editorSignature?: string | null;

@@ -1,9 +1,4 @@
-import type {
-  Action,
-  AnalyzeResult,
-  OffscreenMessage,
-  Tone,
-} from "@/lib/types";
+import type { Action, AnalyzeResult, Tone } from "@/lib/types";
 import {
   SYSTEM_PROMPT,
   USER_PROMPT_PREFIXES,
@@ -11,10 +6,14 @@ import {
   TONE_PROMPT_SUFFIX,
 } from "@/lib/prompts";
 import { generateIssuesFromDiff } from "@/lib/issueOffsets";
-import { buildIssueSentenceContexts, countIssuesPerSentence } from "@/lib/sentences";
+import {
+  buildIssueSentenceContexts,
+  countIssuesPerSentence,
+} from "@/lib/sentences";
 
-const API_URL = "https://vllm.kernelvm.xyz/v1/chat/completions";
-const MODELS_URL = "https://vllm.kernelvm.xyz/v1/models";
+const API_URL = "https://api.typix.app/v1/chat/completions";
+const MODELS_URL = "https://api.typix.app/v1/models";
+const FEEDBACK_URL = "https://api.typix.app/v1/feedback";
 const FALLBACK_MODEL = "typix-medium-epo";
 const CLIENT_VERSION =
   typeof browser !== "undefined" && browser.runtime?.getManifest
@@ -22,14 +21,13 @@ const CLIENT_VERSION =
     : "ext-unknown";
 
 let currentAction: Action = "ANALYZE";
-
 let cachedModelName: string | null = null;
 
 async function fetchModelName(): Promise<string> {
   if (cachedModelName) return cachedModelName;
 
   try {
-    const res = await fetch(MODELS_URL);
+    const res = await fetch(MODELS_URL, { credentials: "include" });
     if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
     const data = await res.json();
     if (data?.data?.[0]?.id) {
@@ -87,15 +85,6 @@ function maskUrls(text: string): { maskedText: string; tokens: UrlToken[] } {
   return { maskedText, tokens };
 }
 
-function restoreUrls(text: string, tokens: UrlToken[]): string {
-  if (!tokens.length) return text;
-  let restored = text;
-  for (const { placeholder, url } of tokens) {
-    restored = restored.split(placeholder).join(url);
-  }
-  return restored;
-}
-
 function shouldAnalyzeSentence(maskedText: string): boolean {
   const withoutUrls = maskedText.replace(URL_PLACEHOLDER_REGEX, "");
   const cleaned = withoutUrls.replace(/\s+/g, " ").trim();
@@ -111,7 +100,6 @@ function shouldAnalyzeSentence(maskedText: string): boolean {
   return letterRatio >= MIN_LETTER_RATIO;
 }
 
-// Split text into sentences while preserving delimiters and whitespace
 function splitIntoSentences(
   text: string
 ): { sentence: string; isContent: boolean }[] {
@@ -128,14 +116,12 @@ function splitIntoSentences(
       : [{ sentence: text, isContent: text.trim().length > 0 }];
   }
 
-  // Match sentences ending with . ! ? (with optional quotes) followed by whitespace or end.
   const sentenceRegex = /[^.!?]*[.!?]+(?:["']?(?:\s+|$))/g;
   const parts: { sentence: string; isContent: boolean }[] = [];
   let lastIndex = 0;
   let match;
 
   while ((match = sentenceRegex.exec(text)) !== null) {
-    // Add any text before this match that wasn't captured
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
       if (before) {
@@ -146,13 +132,11 @@ function splitIntoSentences(
     lastIndex = sentenceRegex.lastIndex;
   }
 
-  // Add remaining text
   if (lastIndex < text.length) {
     const remaining = text.slice(lastIndex);
     parts.push({ sentence: remaining, isContent: remaining.trim().length > 0 });
   }
 
-  // If no sentences found, return the whole text
   if (parts.length === 0 && text.length > 0) {
     parts.push({ sentence: text, isContent: text.trim().length > 0 });
   }
@@ -167,7 +151,7 @@ interface APIResponse {
   requestId?: string;
 }
 
-interface APIMeta {
+export interface APIMeta {
   analysisId?: string;
   sourceText?: string;
   issueCount?: number;
@@ -187,42 +171,27 @@ async function callAPI(
 ): Promise<APIResponse> {
   const model = await fetchModelName();
 
+  console.log("[api] Calling API with model:", model);
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Priority": priority,
     "X-Action": currentAction,
   };
 
-  if (meta?.analysisId) {
-    headers["X-Analysis-Id"] = meta.analysisId;
-  }
-  if (meta?.sessionId) {
-    headers["X-Session-Id"] = meta.sessionId;
-  }
-  if (meta?.editorKind) {
-    headers["X-Editor-Kind"] = meta.editorKind;
-  }
-  if (meta?.editorSignature) {
-    headers["X-Editor-Signature"] = meta.editorSignature;
-  }
-  if (meta?.pageUrl) {
-    headers["X-Page-Url"] = meta.pageUrl;
-  }
-  if (meta?.sourceText) {
-    headers["X-Source-Text"] = meta.sourceText;
-  }
-  if (meta?.clientVersion) {
-    headers["X-Client-Version"] = meta.clientVersion;
-  }
-  if (meta?.issueCount !== undefined) {
-    headers["X-Issue-Count"] = String(meta.issueCount);
-  }
-  if (meta?.skipTraining) {
-    headers["X-Skip-Training"] = "1";
-  }
+  if (meta?.analysisId) headers["X-Analysis-Id"] = meta.analysisId;
+  if (meta?.sessionId) headers["X-Session-Id"] = meta.sessionId;
+  if (meta?.editorKind) headers["X-Editor-Kind"] = meta.editorKind;
+  if (meta?.editorSignature) headers["X-Editor-Signature"] = meta.editorSignature;
+  if (meta?.pageUrl) headers["X-Page-Url"] = meta.pageUrl;
+  if (meta?.sourceText) headers["X-Source-Text"] = meta.sourceText;
+  if (meta?.clientVersion) headers["X-Client-Version"] = meta.clientVersion;
+  if (meta?.issueCount !== undefined) headers["X-Issue-Count"] = String(meta.issueCount);
+  if (meta?.skipTraining) headers["X-Skip-Training"] = "1";
 
   const res = await fetch(API_URL, {
     method: "POST",
+    credentials: "include",
     headers,
     body: JSON.stringify({
       model,
@@ -249,6 +218,8 @@ async function callAPI(
         : undefined,
     }),
   });
+
+  console.log("[api] API response:", res);
 
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
@@ -287,19 +258,27 @@ function getUserMessage(
   }
 }
 
-interface ProcessResult {
+export interface ProcessResult {
   result: string | AnalyzeResult;
   requestId?: string;
   issueCount?: number;
   perSentenceIssueCounts?: { sentenceIndex: number; count: number }[];
 }
 
-async function processText(
+export interface ProcessOptions {
+  tone?: Tone;
+  customInstruction?: string;
+  isPartial?: boolean;
+}
+
+export async function processText(
   action: Action,
   text: string,
-  options?: { tone?: Tone; customInstruction?: string; isPartial?: boolean },
+  options?: ProcessOptions,
   meta?: APIMeta
 ): Promise<ProcessResult> {
+  currentAction = action;
+
   if (action === "ANALYZE") {
     const analysisId = crypto.randomUUID();
     const parts = splitIntoSentences(text);
@@ -328,12 +307,15 @@ async function processText(
 
     const correctedText = content.trim();
     const issues = generateIssuesFromDiff(text, correctedText);
-    const { issueContexts } = buildIssueSentenceContexts(text, issues.issues || []);
+    const { issueContexts } = buildIssueSentenceContexts(
+      text,
+      issues.issues || []
+    );
     const perSentenceIssueCounts = countIssuesPerSentence(issueContexts);
     const issueCount = issues.issues?.length ?? 0;
 
     if (requestId) {
-      fetch("https://api.typix.app/v1/feedback", {
+      fetch(FEEDBACK_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -355,34 +337,37 @@ async function processText(
   }
 
   const userMessage = getUserMessage(action, text, options);
-  const { content, requestId } = await callAPI(SYSTEM_PROMPT, userMessage, "realtime", {
-    skipTraining: options?.isPartial === true,
-    sessionId: meta?.sessionId,
-    editorKind: meta?.editorKind,
-    editorSignature: meta?.editorSignature,
-    pageUrl: meta?.pageUrl,
-    clientVersion: CLIENT_VERSION,
-  });
+  const { content, requestId } = await callAPI(
+    SYSTEM_PROMPT,
+    userMessage,
+    "realtime",
+    {
+      skipTraining: options?.isPartial === true,
+      sessionId: meta?.sessionId,
+      editorKind: meta?.editorKind,
+      editorSignature: meta?.editorSignature,
+      pageUrl: meta?.pageUrl,
+      clientVersion: CLIENT_VERSION,
+    }
+  );
 
   return { result: content, requestId };
 }
 
-browser.runtime.onMessage.addListener((msg: OffscreenMessage, _, respond) => {
-  if (msg.target !== "offscreen" || msg.type !== "GENERATE") return false;
-
-  currentAction = msg.action;
-
-  processText(msg.action, msg.text, msg.options, {
-    sessionId: msg.sessionId,
-    editorKind: msg.editorKind,
-    editorSignature: msg.editorSignature,
-    pageUrl: msg.pageUrl,
-  })
-    .then(({ result, requestId }) => {
-      console.log("[offscreen] Responding with requestId:", requestId);
-      respond({ success: true, result, requestId });
-    })
-    .catch((e: Error) => respond({ success: false, error: e.message }));
-
-  return true;
-});
+export async function submitFeedback(requestId: string, issueCount?: number): Promise<boolean> {
+  try {
+    const res = await fetch(FEEDBACK_URL, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: requestId,
+        issue_count: issueCount,
+      }),
+    });
+    const data = await res.json();
+    return data.success;
+  } catch {
+    return false;
+  }
+}
